@@ -1,4 +1,4 @@
-# Mira: PSU Second Brain (FYP prototype)
+# Anchor: PSU Second Brain (FYP prototype)
 
 Flutter Android app for *AI-Based Health-Oriented Second Brain for Predictive Intervention of Problematic Smartphone Use*.
 
