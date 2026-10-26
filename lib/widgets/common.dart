@@ -126,3 +126,20 @@ class StatTile extends StatelessWidget {
     );
   }
 }
+
+/// Icon and name for the app groups used by screen time and drafts.
+IconData groupIcon(String g) => switch (g) {
+      'social' => Icons.people_alt_outlined,
+      'video' => Icons.smart_display_outlined,
+      'games' => Icons.sports_esports_outlined,
+      'chat' => Icons.chat_outlined,
+      _ => Icons.apps,
+    };
+
+String groupLabel(String g) => switch (g) {
+      'social' => 'Social media',
+      'video' => 'Video',
+      'games' => 'Game',
+      'chat' => 'Messaging',
+      _ => 'Other',
+    };

@@ -118,9 +118,9 @@ class ScreenTimeScreen extends StatelessWidget {
             for (final a in u.apps.take(8))
               ListTile(
                 dense: true,
-                leading: Icon(_groupIcon(a.group)),
+                leading: Icon(groupIcon(a.group)),
                 title: Text(a.label),
-                subtitle: Text('${_groupLabel(a.group)} · opened ${a.opens}×'),
+                subtitle: Text('${groupLabel(a.group)} · opened ${a.opens}×'),
                 trailing: Text(formatMinutes(a.minutes), style: t.textTheme.labelLarge),
               ),
           ],
@@ -130,21 +130,7 @@ class ScreenTimeScreen extends StatelessWidget {
   }
 }
 
-IconData _groupIcon(String g) => switch (g) {
-      'social' => Icons.people_alt_outlined,
-      'video' => Icons.smart_display_outlined,
-      'games' => Icons.sports_esports_outlined,
-      'chat' => Icons.chat_outlined,
-      _ => Icons.apps,
-    };
 
-String _groupLabel(String g) => switch (g) {
-      'social' => 'Social media',
-      'video' => 'Video',
-      'games' => 'Game',
-      'chat' => 'Messaging',
-      _ => 'Other',
-    };
 
 class _PermissionCard extends StatelessWidget {
   const _PermissionCard();
@@ -292,6 +278,31 @@ class _NudgeSettingsCard extends StatelessWidget {
               onChanged: n.warningsEnabled
                   ? (x) => s.updateNudges((n) => n.sessionMinutes = x.round())
                   : null,
+            ),
+            const Divider(height: 24),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: n.askAfterSession,
+              onChanged: (v) => s.updateNudges((n) => n.askAfterSession = v),
+              title: const Text('Ask me after a long session'),
+              subtitle: const Text(
+                  'Mira saves long social, video and game sessions as drafts, then asks what pulled you in'),
+            ),
+            Row(children: [
+              const Icon(Icons.auto_awesome, size: 18),
+              const SizedBox(width: 8),
+              const Expanded(child: Text('Count it as a session after')),
+              Text(formatMinutes(n.draftMinutes), style: t.textTheme.labelLarge),
+            ]),
+            Slider(
+              value: n.draftMinutes.toDouble().clamp(5, 60),
+              min: 5,
+              max: 60,
+              divisions: 11,
+              label: formatMinutes(n.draftMinutes),
+              onChanged: (x) => s.updateNudges((n) => n.draftMinutes = x.round()),
+              // Re-scan once the user lets go, not on every drag step.
+              onChangeEnd: (_) => s.refreshDevice(),
             ),
             const Divider(height: 24),
             SwitchListTile(

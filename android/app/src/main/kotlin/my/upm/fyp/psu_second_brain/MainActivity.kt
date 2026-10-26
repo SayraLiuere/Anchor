@@ -42,6 +42,15 @@ class MainActivity : FlutterActivity() {
                     val end = (call.argument<Number>("end"))!!.toLong()
                     background(result) { UsageReader.toMap(UsageReader.read(this, start, end)) }
                 }
+                "getEpisodes" -> {
+                    val start = (call.argument<Number>("start"))!!.toLong()
+                    val end = (call.argument<Number>("end"))!!.toLong()
+                    val min = call.argument<Int>("minMinutes") ?: 15
+                    background(result) {
+                        val r = UsageReader.read(this, start, end)
+                        UsageReader.episodes(this, r, min).map { UsageReader.episodeMap(this, it, r.ongoing) }
+                    }
+                }
                 "getDailyUsage" -> {
                     val days = call.argument<Int>("days") ?: 7
                     background(result) {

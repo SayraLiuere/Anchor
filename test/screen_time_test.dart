@@ -35,10 +35,37 @@ void main() {
     expect(m.predict(BehaviourFeatures.fromLogs([], screen: s)).level, RiskLevel.high);
   });
 
+  draftTests();
+
   test('nudge settings round-trip', () {
     final n = NudgeSettings(sessionMinutes: 45)..limits['social'] = 30;
     final back = NudgeSettings.fromJson(n.toJson());
+    expect(back.draftMinutes, 15);
+    expect(back.askAfterSession, isTrue);
     expect(back.sessionMinutes, 45);
     expect(back.limits['social'], 30);
+  });
+}
+
+DetectedSession _s(String id, int startMin, {bool ongoing = false}) => DetectedSession(
+      id: id, package: 'com.zhiliaoapp.musically', label: 'TikTok', group: 'social',
+      start: DateTime(2026, 10, 27, 20, startMin), end: DateTime(2026, 10, 27, 21, startMin),
+      minutes: 60, ongoing: ongoing,
+    );
+
+void draftTests() {
+  test('pending drafts skip ongoing, dismissed and already logged sessions', () {
+    final drafts = pendingDrafts(
+      [_s('a', 0), _s('b', 10), _s('c', 20, ongoing: true), _s('d', 30), _s('e', 40)],
+      dismissed: {'b'},
+      logged: {'d'},
+    );
+    expect(drafts.map((d) => d.id), ['e', 'a']); // newest first
+  });
+
+  test('draft id encodes its start time', () {
+    expect(DetectedSession.startOf('com.app@1792418535530'),
+        DateTime.fromMillisecondsSinceEpoch(1792418535530));
+    expect(DetectedSession.startOf('garbage'), isNull);
   });
 }

@@ -32,6 +32,9 @@ class LogEntry {
     this.resisted = false,
     this.note = '',
     this.synthetic = false,
+    this.appPackage,
+    this.appLabel,
+    this.draftId,
   });
 
   final String id;
@@ -54,6 +57,13 @@ class LogEntry {
   /// Marks simulated records (thesis 3.4.6) so they never mix with real data.
   final bool synthetic;
 
+  /// Set when the episode came from an auto-detected session (draft).
+  final String? appPackage;
+  final String? appLabel;
+  final String? draftId;
+
+  bool get autoDetected => draftId != null;
+
   bool get isLateNight => timestamp.hour >= 23 || timestamp.hour < 5;
 
   Map<String, dynamic> toJson() => {
@@ -68,6 +78,9 @@ class LogEntry {
         'continued_or_resisted': resisted ? 'resisted' : 'continued',
         'context_note': note,
         'synthetic': synthetic,
+        if (appPackage != null) 'app_package': appPackage,
+        if (appLabel != null) 'app_label': appLabel,
+        if (draftId != null) 'draft_id': draftId,
       };
 
   factory LogEntry.fromJson(Map<String, dynamic> j) => LogEntry(
@@ -84,6 +97,9 @@ class LogEntry {
         resisted: j['continued_or_resisted'] == 'resisted',
         note: j['context_note'] as String? ?? '',
         synthetic: j['synthetic'] as bool? ?? false,
+        appPackage: j['app_package'] as String?,
+        appLabel: j['app_label'] as String?,
+        draftId: j['draft_id'] as String?,
       );
 }
 

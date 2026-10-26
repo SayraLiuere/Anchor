@@ -27,15 +27,15 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             const SizedBox(height: 24),
             const Center(child: MiraAvatar(size: 120)),
             const SizedBox(height: 24),
-            Text("Hi, I'm Mira",
+            Text('Welcome to Anchor',
                 textAlign: TextAlign.center,
                 style: t.textTheme.headlineMedium
                     ?.copyWith(fontWeight: FontWeight.w800)),
             const SizedBox(height: 8),
             Text(
-              'Your second brain for understanding your phone habits. '
-              'Tell me when you get pulled into your phone and how you feel, '
-              "and I'll remember the patterns so you don't have to.",
+              "I'm Mira, your little companion. Anchor helps you understand your "
+              'screen time and break the cycle of doomscrolling and long gaming '
+              "sessions. I'll notice the patterns so you don't have to.",
               textAlign: TextAlign.center,
               style: t.textTheme.bodyLarge,
             ),
@@ -65,7 +65,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               child: Padding(
                 padding: const EdgeInsets.all(14),
                 child: Text(
-                  'Mira is a self-reflection tool, not a medical device. It does not '
+                  'Anchor is a self-reflection tool, not a medical device. It does not '
                   'diagnose or treat anything and is not a substitute for professional '
                   'care. Your logs stay on this phone. If an AI key is added, only '
                   'summarised, anonymous numbers and your message text are sent.',
