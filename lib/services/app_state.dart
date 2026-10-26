@@ -71,6 +71,9 @@ class AppState extends ChangeNotifier {
         if (j['nudges'] != null) {
           nudges = NudgeSettings.fromJson(j['nudges'] as Map<String, dynamic>);
         }
+        if (j['dismissedDrafts'] != null) {
+          dismissedDrafts = (j['dismissedDrafts'] as List).cast<String>().toSet();
+        }
       }
     } catch (e) {
       debugPrint('Failed to load data: $e');
@@ -95,12 +98,14 @@ class AppState extends ChangeNotifier {
       try {
         todayUsage = await screen.today();
         weekUsage = await screen.daily(days: 7);
+        await _refreshDrafts();
       } catch (e) {
         debugPrint('Usage read failed: $e');
       }
     } else {
       todayUsage = null;
       weekUsage = [];
+      await _refreshDrafts();
     }
     _recompute();
     notifyListeners();
@@ -134,6 +139,7 @@ class AppState extends ChangeNotifier {
       'weeklySummaryAt': weeklySummaryAt?.toIso8601String(),
       'onboarded': onboarded,
       'nudges': nudges.toJson(),
+      'dismissedDrafts': dismissedDrafts.toList(),
     }), flush: true);
     await tmp.rename(_file!.path);
   }
@@ -191,6 +197,7 @@ class AppState extends ChangeNotifier {
     bool resisted = false,
     String note = '',
     DateTime? at,
+    DetectedSession? draft,
   }) {
     final entry = LogEntry(
       id: _uuid.v4(),
@@ -203,15 +210,64 @@ class AppState extends ChangeNotifier {
       durationMinutes: durationMinutes,
       resisted: resisted,
       note: note,
+      appPackage: draft?.package,
+      appLabel: draft?.label,
+      draftId: draft?.id,
     );
     logs.add(entry);
     screen.markLogged(DateTime.now());
+    _updateDrafts();
     _changed();
     return entry;
   }
 
   void deleteLog(String id) {
     logs.removeWhere((l) => l.id == id);
+    _updateDrafts();
+    _changed();
+  }
+
+  // ---------- Auto-drafted episodes ----------
+
+  /// Long sessions from the last 48 h, before filtering.
+  List<DetectedSession> _sessions = [];
+
+  /// Sessions waiting for the user to say why (or skip). Newest first.
+  List<DetectedSession> drafts = [];
+
+  /// Draft ids the user chose to skip ("not a problem").
+  Set<String> dismissedDrafts = {};
+
+  void _updateDrafts() {
+    drafts = pendingDrafts(
+      _sessions,
+      dismissed: dismissedDrafts,
+      logged: {for (final l in logs) if (l.draftId != null) l.draftId!},
+    );
+  }
+
+  Future<void> _refreshDrafts() async {
+    if (!usageGranted) {
+      _sessions = [];
+    } else {
+      final now = DateTime.now();
+      _sessions = await screen.episodes(
+          now.subtract(const Duration(hours: 48)), now,
+          minMinutes: nudges.draftMinutes);
+    }
+    _updateDrafts();
+  }
+
+  DetectedSession? draftById(String id) =>
+      drafts.where((d) => d.id == id).firstOrNull;
+
+  void dismissDraft(String id) {
+    dismissedDrafts.add(id);
+    // Keep the set small: skipped sessions older than 3 days can't come back.
+    final cutoff = DateTime.now().subtract(const Duration(days: 3));
+    dismissedDrafts.removeWhere(
+        (d) => DetectedSession.startOf(d)?.isBefore(cutoff) ?? true);
+    _updateDrafts();
     _changed();
   }
 
@@ -235,9 +291,11 @@ class AppState extends ChangeNotifier {
 
   /// Short companion acknowledgement after a log is saved (thesis 4.7).
   Future<void> reactToLog(LogEntry e) async {
-    final desc = StringBuffer(e.kind == EntryKind.episode
-        ? 'I just logged a phone episode'
-        : 'Quick check-in');
+    final desc = StringBuffer(e.kind != EntryKind.episode
+        ? 'Quick check-in'
+        : e.appLabel != null
+            ? 'You noticed I spent ${e.durationMinutes} min on ${e.appLabel}'
+            : 'I just logged a phone episode');
     if (e.triggers.isNotEmpty) {
       desc.write(' (${e.triggers.map((t) => t.label.toLowerCase()).join(', ')})');
     }

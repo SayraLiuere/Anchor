@@ -47,7 +47,7 @@ class MiraApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Mira',
+      title: 'Anchor',
       debugShowCheckedModeBanner: false,
       theme: _theme(Brightness.light),
       darkTheme: _theme(Brightness.dark),
@@ -96,14 +96,25 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) context.read<AppState>().refreshDevice();
   }
 
-  /// A tapped notification asks to log an episode or a check-in.
+  /// A tapped notification asks to log: "checkin", "log" (newest draft if
+  /// any) or `draft:<id>` (that detected session).
   void _handlePendingAction(AppState s) {
     if (s.pendingAction == null) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       final action = s.takePendingAction();
       if (action == null || !mounted) return;
       select(0);
-      openLogSheet(context, action == 'checkin' ? EntryKind.checkIn : EntryKind.episode);
+      if (action == 'checkin') {
+        openLogSheet(context, EntryKind.checkIn);
+        return;
+      }
+      // Usage data may not be loaded yet on a cold start.
+      if (s.drafts.isEmpty) await s.refreshDevice();
+      if (!mounted) return;
+      final draft = action.startsWith('draft:')
+          ? s.draftById(action.substring(6))
+          : s.drafts.firstOrNull;
+      openLogSheet(context, EntryKind.episode, draft: draft);
     });
   }
 

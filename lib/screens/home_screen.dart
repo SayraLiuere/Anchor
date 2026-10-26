@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../main.dart';
@@ -123,6 +124,10 @@ class _HomeScreenState extends State<HomeScreen> {
             ]),
           ]),
           const SizedBox(height: 16),
+          if (s.drafts.isNotEmpty) ...[
+            DraftsCard(state: s),
+            const SizedBox(height: 14),
+          ],
           ScreenTimeCard(state: s),
           const SizedBox(height: 14),
           RiskCard(risk: s.risk),
@@ -389,6 +394,9 @@ class RiskCard extends StatelessWidget {
                       style: t.textTheme.titleSmall
                           ?.copyWith(fontWeight: FontWeight.w700)),
                   const SizedBox(height: 6),
+                  if (risk.reasons.isEmpty)
+                    Text('No strong warning signs this week',
+                        style: t.textTheme.bodySmall),
                   ...risk.reasons.map((r) => Padding(
                         padding: const EdgeInsets.only(bottom: 3),
                         child: Row(
@@ -439,4 +447,67 @@ class _GaugePainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _GaugePainter old) =>
       old.value != value || old.color != color;
+}
+
+/// Long sessions Mira noticed, each waiting for a one-tap reason or a skip.
+class DraftsCard extends StatelessWidget {
+  const DraftsCard({super.key, required this.state});
+
+  final AppState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final drafts = state.drafts;
+    final shown = drafts.take(3).toList();
+    return Card(
+      color: t.colorScheme.tertiaryContainer.withValues(alpha: 0.55),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 8, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              drafts.length == 1
+                  ? 'Mira noticed a long session'
+                  : 'Mira noticed ${drafts.length} long sessions',
+              style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            Text('What pulled you in? Tap one to tell her.', style: t.textTheme.bodySmall),
+            const SizedBox(height: 6),
+            for (final d in shown)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                leading: Icon(groupIcon(d.group)),
+                title: Text('${formatMinutes(d.minutes)} on ${d.label}'),
+                subtitle: Text(_when(d.start)),
+                onTap: () => openLogSheet(context, EntryKind.episode, draft: d),
+                trailing: IconButton(
+                  tooltip: 'Not a problem, skip',
+                  icon: const Icon(Icons.close),
+                  onPressed: () => state.dismissDraft(d.id),
+                ),
+              ),
+            if (drafts.length > shown.length)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Text('+ ${drafts.length - shown.length} more',
+                    style: t.textTheme.labelSmall),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static String _when(DateTime d) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final day = DateTime(d.year, d.month, d.day);
+    final time = DateFormat('h:mm a').format(d);
+    if (day == today) return 'Today, $time';
+    if (today.difference(day).inDays == 1) return 'Yesterday, $time';
+    return DateFormat('EEE, h:mm a').format(d);
+  }
 }

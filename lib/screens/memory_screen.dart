@@ -170,6 +170,8 @@ class _MemoryTile extends StatelessWidget {
                       ]),
                       const SizedBox(height: 6),
                       Wrap(spacing: 6, runSpacing: 4, children: [
+                        if (e.appLabel != null)
+                          _Tag(icon: Icons.auto_awesome, text: e.appLabel!),
                         ...e.triggers.map((tr) => _Tag(icon: tr.icon, text: tr.label)),
                         _Tag(text: '${ScalePicker.moodFaces[e.mood - 1]} mood ${e.mood}'),
                         _Tag(text: 'stress ${e.stress}'),

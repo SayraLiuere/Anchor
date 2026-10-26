@@ -195,7 +195,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: Padding(
               padding: const EdgeInsets.all(14),
               child: Text(
-                'Mira is a final-year project prototype for self-reflection on '
+                'Anchor is a final-year project prototype for self-reflection on '
                 'smartphone habits. It is not a medical device and does not '
                 'diagnose or treat any condition. If you are struggling, please '
                 'reach out to a counsellor or Befrienders KL (03-7627 2929).',

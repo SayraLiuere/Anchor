@@ -47,6 +47,56 @@ class UsageSummary {
   final List<AppUsageInfo> apps;
 }
 
+/// A long social/video/game session found in usage data. It becomes a draft
+/// episode the user can confirm with a reason, or skip.
+class DetectedSession {
+  DetectedSession({
+    required this.id,
+    required this.package,
+    required this.label,
+    required this.group,
+    required this.start,
+    required this.end,
+    required this.minutes,
+    this.ongoing = false,
+  });
+
+  DetectedSession.fromMap(Map<dynamic, dynamic> m)
+      : id = m['id'] as String,
+        package = m['package'] as String,
+        label = m['label'] as String,
+        group = m['group'] as String,
+        start = DateTime.fromMillisecondsSinceEpoch(m['start'] as int),
+        end = DateTime.fromMillisecondsSinceEpoch(m['end'] as int),
+        minutes = (m['minutes'] as num).toDouble(),
+        ongoing = m['ongoing'] as bool? ?? false;
+
+  /// "package@startMillis", the same id the background watcher uses.
+  final String id;
+  final String package, label, group;
+  final DateTime start, end;
+  final double minutes;
+  final bool ongoing;
+
+  /// Start time encoded in a draft id, used to prune old dismissals.
+  static DateTime? startOf(String id) {
+    final ms = int.tryParse(id.split('@').last);
+    return ms == null ? null : DateTime.fromMillisecondsSinceEpoch(ms);
+  }
+}
+
+/// Sessions still waiting for a reason: finished, not skipped, not logged yet.
+/// Newest first.
+List<DetectedSession> pendingDrafts(
+  List<DetectedSession> sessions, {
+  required Set<String> dismissed,
+  required Set<String> logged,
+}) =>
+    sessions
+        .where((s) => !s.ongoing && !dismissed.contains(s.id) && !logged.contains(s.id))
+        .toList()
+      ..sort((a, b) => b.start.compareTo(a.start));
+
 /// Limits and reminders, enforced by the native background watcher.
 class NudgeSettings {
   NudgeSettings({
@@ -55,6 +105,8 @@ class NudgeSettings {
     this.sessionMinutes = 30,
     this.logReminder = true,
     this.reminderHour = 21,
+    this.askAfterSession = true,
+    this.draftMinutes = 15,
   }) : limits = limits ?? {'social': 60, 'games': 60, 'video': 90, 'total': 300};
 
   bool warningsEnabled;
@@ -63,12 +115,20 @@ class NudgeSettings {
   bool logReminder;
   int reminderHour;
 
+  /// Notify after a long session ends, asking what pulled the user in.
+  bool askAfterSession;
+
+  /// Minimum length for a session to become a draft episode.
+  int draftMinutes;
+
   Map<String, dynamic> toJson() => {
         'warningsEnabled': warningsEnabled,
         'limits': limits,
         'sessionMinutes': sessionMinutes,
         'logReminder': logReminder,
         'reminderHour': reminderHour,
+        'askAfterSession': askAfterSession,
+        'draftMinutes': draftMinutes,
       };
 
   factory NudgeSettings.fromJson(Map<String, dynamic> j) => NudgeSettings(
@@ -78,6 +138,8 @@ class NudgeSettings {
         sessionMinutes: j['sessionMinutes'] as int? ?? 30,
         logReminder: j['logReminder'] as bool? ?? true,
         reminderHour: j['reminderHour'] as int? ?? 21,
+        askAfterSession: j['askAfterSession'] as bool? ?? true,
+        draftMinutes: j['draftMinutes'] as int? ?? 15,
       );
 }
 
@@ -121,6 +183,17 @@ class ScreenTimeService {
       'end': now.millisecondsSinceEpoch,
     });
     return m == null ? null : UsageSummary.fromMap(m);
+  }
+
+  /// Long social/video/game sessions between [start] and [end].
+  Future<List<DetectedSession>> episodes(DateTime start, DateTime end,
+      {int minMinutes = 15}) async {
+    final l = await _call<List>('getEpisodes', {
+      'start': start.millisecondsSinceEpoch,
+      'end': end.millisecondsSinceEpoch,
+      'minMinutes': minMinutes,
+    });
+    return l == null ? [] : l.map((m) => DetectedSession.fromMap(m as Map)).toList();
   }
 
   /// One summary per day, oldest first, ending today.

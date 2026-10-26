@@ -62,7 +62,8 @@ object UsageReader {
         var opens = 0
     }
 
-    class Session(val pkg: String, val start: Long, val end: Long)
+    /** [activeMs] is time actually in the app; it differs from end - start after merging. */
+    class Session(val pkg: String, val start: Long, val end: Long, val activeMs: Long = end - start)
 
     class Result(
         val apps: Map<String, AppUsage>,
@@ -71,11 +72,45 @@ object UsageReader {
         val longest: Session?,
         /** Session still in the foreground at `end`, if any. */
         val ongoing: Session?,
+        val sessions: List<Session>,
     ) {
         fun groupMs(group: String) = apps.values.filter { it.group == group }.sumOf { it.ms }
         val totalMs get() = apps.values.sumOf { it.ms }
     }
 
+
+    /** Groups where a long session usually means doomscrolling or gaming. */
+    val PSU_GROUPS = setOf(SOCIAL, VIDEO, GAMES)
+
+    /**
+     * Joins sessions of the same app separated by short gaps (e.g. a quick
+     * look at a notification) into one "episode", and keeps PSU-relevant ones
+     * of at least [minMinutes]. The id (package@start) is stable across reads.
+     */
+    fun episodes(ctx: Context, r: Result, minMinutes: Int, gapMs: Long = 2 * 60_000L): List<Session> {
+        val merged = ArrayList<Session>()
+        for (s in r.sessions.sortedBy { it.start }) {
+            val last = merged.lastOrNull()
+            if (last != null && last.pkg == s.pkg && s.start - last.end <= gapMs) {
+                merged[merged.size - 1] = Session(last.pkg, last.start, s.end, last.activeMs + s.activeMs)
+            } else {
+                merged.add(s)
+            }
+        }
+        return merged.filter {
+            describe(ctx, it.pkg).second in PSU_GROUPS && it.activeMs >= minMinutes * 60_000L
+        }
+    }
+
+    fun episodeMap(ctx: Context, s: Session, ongoing: Session?): Map<String, Any?> {
+        val (label, group) = describe(ctx, s.pkg)
+        return mapOf(
+            "id" to "${s.pkg}@${s.start}", "package" to s.pkg, "label" to label, "group" to group,
+            "start" to s.start, "end" to s.end, "minutes" to s.activeMs / 60000.0,
+            // Still open if it runs into the session that is in the foreground right now.
+            "ongoing" to (ongoing != null && ongoing.pkg == s.pkg && ongoing.end == s.end),
+        )
+    }
     private val groupCache = java.util.concurrent.ConcurrentHashMap<String, Pair<String, String>>()
 
     fun describe(ctx: Context, pkg: String): Pair<String, String> = groupCache.getOrPut(pkg) {
@@ -173,6 +208,7 @@ object UsageReader {
             lateNightMs = sessions.sumOf { lateNightOverlap(it.start, it.end) },
             longest = sessions.maxByOrNull { it.end - it.start },
             ongoing = ongoing,
+            sessions = sessions,
         )
     }
 

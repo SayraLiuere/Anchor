@@ -33,6 +33,8 @@ class MiraConfig(json: JSONObject) {
     val logReminder = json.optBoolean("logReminder", true)
     val reminderHour = json.optInt("reminderHour", 21)
     val petName = json.optString("petName", "Mira")
+    val askAfterSession = json.optBoolean("askAfterSession", true)
+    val draftMinutes = json.optInt("draftMinutes", 15)
 
     val anyEnabled get() = warnings || logReminder
 
@@ -126,6 +128,32 @@ class MiraWorker(ctx: Context, params: WorkerParameters) : Worker(ctx, params) {
                         action = "log",
                     )
                 }
+            }
+        }
+
+        // Right after a long session ends, ask what pulled the user in. The tap opens
+        // the auto-drafted episode, so logging is one or two taps.
+        if (cfg.askAfterSession && UsageReader.hasPermission(ctx)) {
+            val r = UsageReader.read(ctx, now - 6 * 3600_000L, now)
+            val lastAsk = prefs.getLong("lastDraftAsk", 0L)
+            val fresh = UsageReader.episodes(ctx, r, cfg.draftMinutes).filter { s ->
+                val ongoing = r.ongoing?.let { it.pkg == s.pkg && it.end == s.end } ?: false
+                !ongoing && now - s.end <= 60 * 60_000L &&
+                    !prefs.getBoolean("asked_${s.pkg}@${s.start}", false)
+            }
+            val s = fresh.maxByOrNull { it.end }
+            // At most one of these every 45 minutes, so it never feels like nagging.
+            if (s != null && now - lastAsk >= 45 * 60_000L) {
+                val id = "${s.pkg}@${s.start}"
+                prefs.edit().putBoolean("asked_$id", true).putLong("lastDraftAsk", now).apply()
+                val (label, _) = UsageReader.describe(ctx, s.pkg)
+                notify(
+                    id = 400,
+                    channel = CH_NUDGE,
+                    title = "${fmt((s.activeMs + 30_000) / 60000)} on $label",
+                    text = "${cfg.petName} saved it for you. What pulled you in? It only takes a tap.",
+                    action = "draft:$id",
+                )
             }
         }
 

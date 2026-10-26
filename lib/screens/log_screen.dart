@@ -6,15 +6,17 @@ import '../main.dart';
 import '../models/log_entry.dart';
 import '../services/app_state.dart';
 import '../services/risk_model.dart';
+import '../services/screen_time.dart';
 import '../widgets/common.dart';
 
-Future<void> openLogSheet(BuildContext context, EntryKind kind) {
+Future<void> openLogSheet(BuildContext context, EntryKind kind,
+    {DetectedSession? draft}) {
   return showModalBottomSheet(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
     showDragHandle: true,
-    builder: (_) => LogSheet(initialKind: kind),
+    builder: (_) => LogSheet(initialKind: kind, draft: draft),
   ).then((saved) {
     if (saved == true && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -29,9 +31,12 @@ Future<void> openLogSheet(BuildContext context, EntryKind kind) {
 /// Episode / check-in form (FR1, FR2). Kept short: everything is tap-based,
 /// only the note is typed.
 class LogSheet extends StatefulWidget {
-  const LogSheet({super.key, required this.initialKind});
+  const LogSheet({super.key, required this.initialKind, this.draft});
 
   final EntryKind initialKind;
+
+  /// An auto-detected session to confirm; time and duration come from it.
+  final DetectedSession? draft;
 
   @override
   State<LogSheet> createState() => _LogSheetState();
@@ -49,6 +54,13 @@ class _LogSheetState extends State<LogSheet> {
   @override
   void initState() {
     super.initState();
+    final d = widget.draft;
+    if (d != null) {
+      _kind = EntryKind.episode;
+      _at = d.start;
+      // Real measured length; the slider (min 5) is hidden for drafts.
+      _duration = d.minutes.round().clamp(1, 24 * 60).toDouble();
+    }
     final h = _at.hour;
     if (h >= 23 || h < 5) _triggers.add(Trigger.lateNight);
   }
@@ -75,6 +87,7 @@ class _LogSheetState extends State<LogSheet> {
       durationMinutes: _kind == EntryKind.episode && !_resisted ? _duration.round() : 0,
       resisted: _kind == EntryKind.episode && _resisted,
       note: _note.text.trim(),
+      draft: widget.draft,
     );
     s.reactToLog(e);
     Navigator.pop(context, true);
@@ -90,6 +103,9 @@ class _LogSheetState extends State<LogSheet> {
         shrinkWrap: true,
         padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
         children: [
+          if (widget.draft != null)
+            _DetectedHeader(draft: widget.draft!)
+          else ...[
           SegmentedButton<EntryKind>(
             segments: const [
               ButtonSegment(
@@ -134,6 +150,7 @@ class _LogSheetState extends State<LogSheet> {
                 onChanged: (v) => setState(() => _duration = v),
               ),
             ],
+          ],
           ],
           const SizedBox(height: 4),
           Text(isEpisode ? 'What pulled you in?' : "What's on your mind?",
@@ -188,6 +205,40 @@ class _LogSheetState extends State<LogSheet> {
                 padding: const EdgeInsets.symmetric(vertical: 16)),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Summary of an auto-detected session shown instead of the manual time and
+/// duration controls, so the user only has to say why.
+class _DetectedHeader extends StatelessWidget {
+  const _DetectedHeader({required this.draft});
+
+  final DetectedSession draft;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    return Card(
+      color: t.colorScheme.primaryContainer.withValues(alpha: 0.6),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Row(children: [
+          Icon(groupIcon(draft.group), color: t.colorScheme.primary),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('${formatMinutes(draft.minutes)} on ${draft.label}',
+                  style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+              Text(
+                '${DateFormat('EEE h:mm a').format(draft.start)} – '
+                '${DateFormat('h:mm a').format(draft.end)} · detected automatically',
+                style: t.textTheme.bodySmall,
+              ),
+            ]),
+          ),
+        ]),
       ),
     );
   }
