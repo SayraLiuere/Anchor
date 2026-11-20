@@ -3,8 +3,10 @@ import 'dart:math';
 import 'package:intl/intl.dart';
 
 import '../models/log_entry.dart';
+import '../models/schedule_block.dart';
 import 'features.dart';
 import 'risk_model.dart';
+import 'schedule_service.dart';
 import 'screen_time.dart';
 
 /// What the AI is told instead of an app's name (B2, ground rule 3).
@@ -29,15 +31,38 @@ Map<String, dynamic> buildChatContext({
   required RiskResult risk,
   required List<LogEntry> logs,
   UsageSummary? today,
+  ScheduleService? schedule,
 }) {
   final recent = [...logs]..sort((a, b) => b.timestamp.compareTo(a.timestamp));
   return {
     'now': DateFormat('EEE HH:mm').format(now),
     'current_risk_level': risk.level.label,
     'risk_reasons': risk.reasons,
+    if (schedule != null && schedule.blocks.isNotEmpty) 'schedule_today': _schedule(schedule, now),
     if (today != null) 'today_minutes': _today(today),
     'last_7_days': features.toPromptJson(),
     'recent_logs': [for (final l in recent.take(3)) _log(l, now)],
+  };
+}
+
+/// Today's blocks by type and time (C1). Titles are typed by the user, so
+/// they are never sent.
+Map<String, dynamic> _schedule(ScheduleService s, DateTime now) {
+  final current = s.currentBlock(now);
+  final load = s.todayLoad(now);
+  String hm(DateTime t) => DateFormat('HH:mm').format(t);
+  return {
+    'right_now': current == null
+        ? 'nothing scheduled'
+        : current.type == BlockType.folder
+            ? 'free time between scheduled blocks'
+            : current.type.id,
+    'day_load': load.label.label.toLowerCase(),
+    'blocks': [
+      for (final o in s.occurrencesOn(now))
+        if (o.block.type != BlockType.folder)
+          {'type': o.block.type.id, 'from': hm(o.start), 'to': hm(o.end)},
+    ],
   };
 }
 

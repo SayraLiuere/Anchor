@@ -105,7 +105,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             _SpeechBubble(
               text: _companionLine(s),
-              onTap: () => RootShell.goTo(context, 1),
+              onTap: () => RootShell.goTo(context, 2),
             ),
             const SizedBox(height: 8),
             Row(mainAxisAlignment: MainAxisAlignment.center, children: [
@@ -154,7 +154,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: _ActionButton(
                     icon: Icons.chat_bubble_outline,
                     label: 'Vent',
-                    onTap: () => RootShell.goTo(context, 1))),
+                    onTap: () => RootShell.goTo(context, 2))),
           ]),
           const SectionTitle('Logged today'),
           Row(children: [
@@ -181,7 +181,7 @@ class _HomeScreenState extends State<HomeScreen> {
             const SectionTitle('Your latest weekly recap'),
             InkWell(
               borderRadius: BorderRadius.circular(20),
-              onTap: () => RootShell.goTo(context, 3),
+              onTap: () => RootShell.goTo(context, 4),
               child: Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16),

@@ -40,6 +40,8 @@ class LogEntry {
     this.appLabel,
     this.appGroup,
     this.draftId,
+    this.blockId,
+    this.blockType,
   });
 
   final String id;
@@ -71,6 +73,11 @@ class LogEntry {
   final String? appGroup;
   final String? draftId;
 
+  /// Schedule block running when the log was made (C1): its id and type
+  /// (`class`, `study`, ..., or `folder` for free time inside a folder).
+  final String? blockId;
+  final String? blockType;
+
   bool get autoDetected => draftId != null;
 
   bool get isLateNight => timestamp.hour >= 23 || timestamp.hour < 5;
@@ -90,6 +97,8 @@ class LogEntry {
         if (appPackage != null) 'app_package': appPackage,
         if (appLabel != null) 'app_label': appLabel,
         if (appGroup != null) 'app_group': appGroup,
+        if (blockId != null) 'block_id': blockId,
+        if (blockType != null) 'block_type': blockType,
         if (draftId != null) 'draft_id': draftId,
       };
 
@@ -110,6 +119,8 @@ class LogEntry {
         appPackage: j['app_package'] as String?,
         appLabel: j['app_label'] as String?,
         appGroup: j['app_group'] as String?,
+        blockId: j['block_id'] as String?,
+        blockType: j['block_type'] as String?,
         draftId: j['draft_id'] as String?,
       );
 }

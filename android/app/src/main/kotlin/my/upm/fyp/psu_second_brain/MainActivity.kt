@@ -79,6 +79,12 @@ class MainActivity : FlutterActivity() {
                     MiraConfig.save(this, call.argument<String>("json") ?: "{}")
                     result.success(null)
                 }
+                "setSchedule" -> {
+                    // Schedule blocks for the worker (C1; read by D1/D2). No titles.
+                    MiraConfig.prefs(this).edit()
+                        .putString("schedule", call.argument<String>("json") ?: "[]").apply()
+                    result.success(null)
+                }
                 "markLogged" -> {
                     MiraConfig.prefs(this).edit()
                         .putString("lastLogDay", call.argument<String>("day")).apply()

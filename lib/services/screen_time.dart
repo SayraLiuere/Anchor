@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
+import '../models/schedule_block.dart';
 import 'usage_snapshots.dart';
 
 /// One app's foreground time in a period.
@@ -246,6 +247,14 @@ class ScreenTimeService {
 
   Future<void> pushSettings(NudgeSettings s) =>
       _call('setConfig', {'json': jsonEncode({...s.toJson(), 'petName': 'Mira'})});
+
+  /// Gives the background worker the schedule for D1/D2 (C1): times, types,
+  /// weekdays, folders, quiet flags and skipped dates. Titles stay in the app.
+  Future<void> pushSchedule(List<ScheduleBlock> blocks) => _call('setSchedule', {
+        'json': jsonEncode([
+          for (final b in blocks) Map.of(b.toJson())..remove('title'),
+        ]),
+      });
 
   Future<void> markLogged(DateTime day) =>
       _call('markLogged', {'day': DateFormat('yyyy-MM-dd').format(day)});

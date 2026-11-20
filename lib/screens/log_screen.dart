@@ -22,7 +22,7 @@ Future<void> openLogSheet(BuildContext context, EntryKind kind,
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: const Text('Saved to your memory. Mira is replying…'),
         action: SnackBarAction(
-            label: 'View', onPressed: () => RootShell.goTo(context, 1)),
+            label: 'View', onPressed: () => RootShell.goTo(context, 2)),
       ));
     }
   });

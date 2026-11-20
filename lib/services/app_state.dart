@@ -12,6 +12,8 @@ import 'companion_ai.dart';
 import 'export.dart';
 import 'features.dart';
 import 'risk_model.dart';
+import '../models/schedule_block.dart';
+import 'schedule_service.dart';
 import 'screen_time.dart';
 import 'secret_store.dart';
 import 'usage_snapshots.dart';
@@ -34,7 +36,8 @@ class AppState extends ChangeNotifier {
   /// v3 (A3): timestamps carry their UTC offset; day rows get day_start.
   /// v4 (B1): adds install_id; apiKey moves to secure storage (kept in the
   /// file only if secure storage fails).
-  static const schemaVersion = 4;
+  /// v5 (C1): adds blocks; logs get block_id and block_type.
+  static const schemaVersion = 5;
 
   /// True when the bundled Random Forest loaded (used with screen time on).
   bool get forestAvailable => riskEngine.forest != null;
@@ -57,6 +60,10 @@ class AppState extends ChangeNotifier {
   /// Saved complete days and their hourly breakdown (A2). Never overwritten.
   List<DaySnapshot> usageDaily = [];
   List<HourUsage> usageHourly = [];
+
+  /// Schedule blocks (C1). Stored as `blocks`.
+  List<ScheduleBlock> blocks = [];
+  ScheduleService get schedule => ScheduleService(blocks);
 
   /// Set when a notification was tapped ("log" or "checkin"); the UI consumes it.
   String? pendingAction;
@@ -108,6 +115,9 @@ class AppState extends ChangeNotifier {
         usageDaily = (j['usage_daily'] as List? ?? [])
             .map((e) => DaySnapshot.fromJson(e as Map<String, dynamic>))
             .toList();
+        blocks = (j['blocks'] as List? ?? [])
+            .map((e) => ScheduleBlock.fromJson(e as Map<String, dynamic>))
+            .toList();
         usageHourly = (j['usage_hourly'] as List? ?? [])
             .map((e) => HourUsage.fromJson(e as Map<String, dynamic>))
             .toList();
@@ -126,6 +136,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     if (needsSave) await _save();
     await screen.pushSettings(nudges);
+    await screen.pushSchedule(blocks);
     await refreshDevice();
   }
 
@@ -244,6 +255,7 @@ class AppState extends ChangeNotifier {
       'dismissedDrafts': dismissedDrafts.toList(),
       'usage_daily': usageDaily.map((e) => e.toJson()).toList(),
       'usage_hourly': usageHourly.map((e) => e.toJson()).toList(),
+      'blocks': blocks.map((b) => b.toJson()).toList(),
     }), flush: true);
     await tmp.rename(_file!.path);
   }
@@ -303,9 +315,13 @@ class AppState extends ChangeNotifier {
     DateTime? at,
     DetectedSession? draft,
   }) {
+    final when = at ?? DateTime.now();
+    // C1: label the log with the block running at that time. A drafted
+    // session is labelled by when it started, not when it was confirmed.
+    final tag = schedule.tagFor(draft?.start ?? when);
     final entry = LogEntry(
       id: _uuid.v4(),
-      timestamp: at ?? DateTime.now(),
+      timestamp: when,
       kind: kind,
       mood: mood,
       stress: stress,
@@ -318,6 +334,8 @@ class AppState extends ChangeNotifier {
       appLabel: draft?.label,
       appGroup: draft?.group,
       draftId: draft?.id,
+      blockId: tag?.$1,
+      blockType: tag?.$2,
     );
     logs.add(entry);
     screen.markLogged(DateTime.now());
@@ -393,6 +411,7 @@ class AppState extends ChangeNotifier {
         risk: risk,
         logs: logs,
         today: usageGranted ? todayUsage : null,
+        schedule: schedule,
       ),
       scrubber: promptScrubber,
     );
@@ -471,6 +490,44 @@ class AppState extends ChangeNotifier {
       ai.model = provider.defaultModel;
     }
     if (model != null && model.trim().isNotEmpty) ai.model = model.trim();
+    _changed();
+  }
+
+  // ---------- Schedule (C1) ----------
+
+  /// Adds or replaces a block (matched by id).
+  void saveBlock(ScheduleBlock b) {
+    final i = blocks.indexWhere((x) => x.id == b.id);
+    if (i >= 0) {
+      blocks[i] = b;
+    } else {
+      blocks.add(b);
+    }
+    _scheduleChanged();
+  }
+
+  /// Deletes a block; blocks inside a deleted folder stay, moved out of it.
+  void deleteBlock(String id) {
+    blocks = [
+      for (final b in blocks)
+        if (b.id != id) b.parentId == id ? b.copyWith(clearParent: true) : b,
+    ];
+    _scheduleChanged();
+  }
+
+  /// Skips a block just for [day] ("Not today").
+  void cancelBlockOn(String id, DateTime day) {
+    final i = blocks.indexWhere((x) => x.id == id);
+    if (i < 0) return;
+    blocks[i] = blocks[i].copyWith(
+        cancelledDates: {...blocks[i].cancelledDates, dateKey(day)});
+    _scheduleChanged();
+  }
+
+  String newBlockId() => _uuid.v4();
+
+  void _scheduleChanged() {
+    screen.pushSchedule(blocks);
     _changed();
   }
 

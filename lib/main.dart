@@ -8,6 +8,7 @@ import 'screens/home_screen.dart';
 import 'screens/insights_screen.dart';
 import 'screens/memory_screen.dart';
 import 'screens/onboarding_screen.dart';
+import 'screens/schedule_screen.dart';
 import 'services/app_state.dart';
 
 void main() {
@@ -126,6 +127,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
         index: _index,
         children: const [
           HomeScreen(),
+          ScheduleScreen(),
           CompanionScreen(),
           MemoryScreen(),
           InsightsScreen(),
@@ -139,6 +141,10 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
               icon: Icon(Icons.home_outlined),
               selectedIcon: Icon(Icons.home),
               label: 'Home'),
+          NavigationDestination(
+              icon: Icon(Icons.calendar_today_outlined),
+              selectedIcon: Icon(Icons.calendar_today),
+              label: 'Schedule'),
           NavigationDestination(
               icon: Icon(Icons.chat_bubble_outline),
               selectedIcon: Icon(Icons.chat_bubble),
