@@ -28,7 +28,8 @@ class AppState extends ChangeNotifier {
   /// Version of second_brain.json. Old files have no field and load with
   /// defaults; keys are only ever added, never renamed or removed.
   /// v2 (A2): adds usage_daily and usage_hourly.
-  static const schemaVersion = 2;
+  /// v3 (A3): timestamps carry their UTC offset; day rows get day_start.
+  static const schemaVersion = 3;
 
   /// True when the bundled Random Forest loaded (used with screen time on).
   bool get forestAvailable => riskEngine.forest != null;
@@ -79,7 +80,7 @@ class AppState extends ChangeNotifier {
         ai.model = j['model'] as String? ?? ai.provider.defaultModel;
         weeklySummary = j['weeklySummary'] as String?;
         final at = j['weeklySummaryAt'] as String?;
-        weeklySummaryAt = at == null ? null : DateTime.parse(at);
+        weeklySummaryAt = at == null ? null : parseTimestamp(at);
         onboarded = j['onboarded'] as bool? ?? false;
         if (j['nudges'] != null) {
           nudges = NudgeSettings.fromJson(j['nudges'] as Map<String, dynamic>);
@@ -190,7 +191,7 @@ class AppState extends ChangeNotifier {
       'apiKey': ai.apiKey,
       'model': ai.model,
       'weeklySummary': weeklySummary,
-      'weeklySummaryAt': weeklySummaryAt?.toIso8601String(),
+      'weeklySummaryAt': weeklySummaryAt == null ? null : toOffsetIso(weeklySummaryAt!),
       'schema_version': schemaVersion,
       'onboarded': onboarded,
       'nudges': nudges.toJson(),

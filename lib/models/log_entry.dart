@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 
+import 'timestamps.dart';
+
+export 'timestamps.dart';
+
 /// Trigger categories from Table 4.3 of the thesis, plus "urge" which backs
 /// the notification/urge indicator in Table 3.1.
 enum Trigger {
@@ -68,7 +72,7 @@ class LogEntry {
 
   Map<String, dynamic> toJson() => {
         'id': id,
-        'timestamp': timestamp.toIso8601String(),
+        'timestamp': toOffsetIso(timestamp),
         'kind': kind.name,
         'mood_rating': mood,
         'perceived_stress': stress,
@@ -85,7 +89,7 @@ class LogEntry {
 
   factory LogEntry.fromJson(Map<String, dynamic> j) => LogEntry(
         id: j['id'] as String,
-        timestamp: DateTime.parse(j['timestamp'] as String),
+        timestamp: parseTimestamp(j['timestamp'] as String),
         kind: EntryKind.values.byName(j['kind'] as String),
         mood: j['mood_rating'] as int,
         stress: j['perceived_stress'] as int,
@@ -112,11 +116,11 @@ class ChatMessage {
   final DateTime at;
 
   Map<String, dynamic> toJson() =>
-      {'fromUser': fromUser, 'text': text, 'at': at.toIso8601String()};
+      {'fromUser': fromUser, 'text': text, 'at': toOffsetIso(at)};
 
   factory ChatMessage.fromJson(Map<String, dynamic> j) => ChatMessage(
         fromUser: j['fromUser'] as bool,
         text: j['text'] as String,
-        at: DateTime.parse(j['at'] as String),
+        at: parseTimestamp(j['at'] as String),
       );
 }

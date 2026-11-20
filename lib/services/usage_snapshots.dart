@@ -1,5 +1,6 @@
 import 'package:intl/intl.dart';
 
+import '../models/timestamps.dart';
 import 'screen_time.dart';
 
 /// Daily and hourly usage snapshots (A2, FR25, thesis 3.3.4).
@@ -43,7 +44,13 @@ class DaySnapshot {
     required this.unlocks,
     required this.opens,
     required this.lateNightMinutes,
+    this.dayStart,
   });
+
+  /// Local midnight with its offset when the day was saved (A3), e.g.
+  /// `2026-11-19T00:00:00+08:00`. Kept as written; rows saved before A3
+  /// have none.
+  final String? dayStart;
 
   /// Local calendar date, `yyyy-MM-dd`.
   final String date;
@@ -67,6 +74,7 @@ class DaySnapshot {
         'unlocks': unlocks,
         'late_night_min': _r2(lateNightMinutes),
         'opens': opens,
+        if (dayStart != null) 'day_start': dayStart,
       };
 
   /// Missing fields default to 0, so rows from older versions still load.
@@ -76,6 +84,7 @@ class DaySnapshot {
         unlocks: (j['unlocks'] as num?)?.toInt() ?? 0,
         opens: (j['opens'] as num?)?.toInt() ?? 0,
         lateNightMinutes: _num(j['late_night_min']),
+        dayStart: j['day_start'] as String?,
       );
 
   /// Same shape as a live day read, so features and charts treat both alike.
@@ -174,6 +183,7 @@ class HourUsage {
       unlocks: unlockCount[date] ?? 0,
       opens: opens[date] ?? 0,
       lateNightMinutes: late,
+      dayStart: toOffsetIso(DateTime.parse(date)),
     ));
   }
   return (days: days, hours: hours);
