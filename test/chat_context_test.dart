@@ -136,6 +136,6 @@ void main() {
       context: const {},
       scrubber: scrubber(),
     );
-    expect(r, CompanionAI.crisisMessage);
+    expect(r.text, CompanionAI.crisisMessage);
   });
 }

@@ -10,6 +10,8 @@ import '../models/log_entry.dart';
 import 'chat_context.dart';
 import 'companion_ai.dart';
 import 'export.dart';
+import 'memory.dart';
+import '../models/fact.dart';
 import 'features.dart';
 import 'risk_model.dart';
 import '../models/schedule_block.dart';
@@ -37,7 +39,8 @@ class AppState extends ChangeNotifier {
   /// v4 (B1): adds install_id; apiKey moves to secure storage (kept in the
   /// file only if secure storage fails).
   /// v5 (C1): adds blocks; logs get block_id and block_type.
-  static const schemaVersion = 5;
+  /// v6 (B4): adds facts.
+  static const schemaVersion = 6;
 
   /// True when the bundled Random Forest loaded (used with screen time on).
   bool get forestAvailable => riskEngine.forest != null;
@@ -114,6 +117,9 @@ class AppState extends ChangeNotifier {
         }
         usageDaily = (j['usage_daily'] as List? ?? [])
             .map((e) => DaySnapshot.fromJson(e as Map<String, dynamic>))
+            .toList();
+        facts = (j['facts'] as List? ?? [])
+            .map((e) => Fact.fromJson(e as Map<String, dynamic>))
             .toList();
         blocks = (j['blocks'] as List? ?? [])
             .map((e) => ScheduleBlock.fromJson(e as Map<String, dynamic>))
@@ -256,6 +262,7 @@ class AppState extends ChangeNotifier {
       'usage_daily': usageDaily.map((e) => e.toJson()).toList(),
       'usage_hourly': usageHourly.map((e) => e.toJson()).toList(),
       'blocks': blocks.map((b) => b.toJson()).toList(),
+      'facts': facts.map((f) => f.toJson()).toList(),
     }), flush: true);
     await tmp.rename(_file!.path);
   }
@@ -400,25 +407,98 @@ class AppState extends ChangeNotifier {
     chat.add(ChatMessage(fromUser: true, text: text));
     companionTyping = true;
     notifyListeners();
+    final now = DateTime.now();
+    final scrubber = promptScrubber;
     final answer = await ai.reply(
       userText: text,
       features: features,
       risk: risk,
       history: chat.sublist(0, chat.length - 1),
-      context: buildChatContext(
-        now: DateTime.now(),
-        features: features,
-        risk: risk,
-        logs: logs,
-        today: usageGranted ? todayUsage : null,
-        schedule: schedule,
-      ),
-      scrubber: promptScrubber,
+      context: {
+        ...buildChatContext(
+          now: now,
+          features: features,
+          risk: risk,
+          logs: logs,
+          today: usageGranted ? todayUsage : null,
+          schedule: schedule,
+        ),
+        'remembered': factsForPrompt(relevantFacts(now), scrubber),
+      },
+      scrubber: scrubber,
     );
-    chat.add(ChatMessage(fromUser: false, text: answer));
+    chat.add(ChatMessage(fromUser: false, text: answer.text));
+    // B4: suggestions wait for a tap; nothing is saved here.
+    final known = facts.map((f) => f.text.toLowerCase()).toSet();
+    pendingFacts = answer.facts.where((f) => !known.contains(f.text.toLowerCase())).toList();
     companionTyping = false;
     notifyListeners();
     _save();
+  }
+
+  // ---------- Long-term memory (B4) ----------
+
+  /// Facts the user confirmed. Stored as `facts`.
+  List<Fact> facts = [];
+
+  /// Facts Mira suggested in her last reply, waiting for a tap. Not saved.
+  List<SuggestedFact> pendingFacts = [];
+
+  /// The facts sent with a chat message: matching the latest trigger (if
+  /// logged in the last 3 hours, else the week's top trigger), the current
+  /// block or the time of day, then newest.
+  List<Fact> relevantFacts(DateTime now) {
+    final recent = logs
+        .where((l) => l.triggers.isNotEmpty && now.difference(l.timestamp).inHours < 3)
+        .firstOrNull;
+    return selectFacts(
+      facts,
+      now: now,
+      trigger: recent?.triggers.first ?? features.topTrigger,
+      blockType: schedule.currentBlock(now)?.type.id,
+    );
+  }
+
+  void confirmFact(SuggestedFact s) {
+    final now = DateTime.now();
+    facts.add(Fact(
+      id: _uuid.v4(),
+      text: s.text,
+      category: s.category,
+      private: s.private,
+      createdAt: now,
+    ));
+    pendingFacts.remove(s);
+    _changed();
+  }
+
+  void dismissSuggestion(SuggestedFact s) {
+    pendingFacts.remove(s);
+    notifyListeners();
+  }
+
+  void addFact(String text, FactCategory category, {bool private = false}) {
+    facts.add(Fact(
+      id: _uuid.v4(),
+      text: text.trim(),
+      category: category,
+      private: private,
+      source: FactSource.manual,
+      createdAt: DateTime.now(),
+    ));
+    _changed();
+  }
+
+  void updateFact(Fact f) {
+    final i = facts.indexWhere((x) => x.id == f.id);
+    if (i >= 0) facts[i] = f.copyWith(lastConfirmed: DateTime.now());
+    _changed();
+  }
+
+  /// Deleting a fact removes it from every later prompt.
+  void deleteFact(String id) {
+    facts.removeWhere((f) => f.id == id);
+    _changed();
   }
 
   /// Every app name and the display name Mira's AI must not see (B2):
@@ -548,6 +628,8 @@ class AppState extends ChangeNotifier {
     chat.clear();
     weeklySummary = null;
     weeklySummaryAt = null;
+    facts.clear();
+    pendingFacts.clear();
     _changed();
   }
 

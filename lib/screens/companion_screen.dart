@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../models/log_entry.dart';
+import '../models/fact.dart';
 import '../services/app_state.dart';
 import '../services/companion_ai.dart';
 import '../widgets/common.dart';
@@ -89,6 +90,7 @@ class _CompanionScreenState extends State<CompanionScreen> {
                     },
                   ),
           ),
+          for (final f in s.pendingFacts) _RememberCard(fact: f),
           SizedBox(
             height: 48,
             child: ListView(
@@ -225,6 +227,49 @@ class _TypingBubble extends StatelessWidget {
           borderRadius: BorderRadius.circular(18),
         ),
         child: Text('Mira is thinking…', style: t.textTheme.bodySmall),
+      ),
+    );
+  }
+}
+
+/// Mira suggests remembering something (B4). Nothing is saved unless the
+/// user taps Remember.
+class _RememberCard extends StatelessWidget {
+  const _RememberCard({required this.fact});
+
+  final SuggestedFact fact;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final s = context.read<AppState>();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+      child: Card(
+        color: t.colorScheme.secondaryContainer,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 8, 4),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Icon(fact.category.icon, size: 18),
+              const SizedBox(width: 6),
+              Text('Should I remember this?', style: t.textTheme.labelLarge),
+              if (fact.private) ...[
+                const SizedBox(width: 6),
+                const Icon(Icons.lock_outline, size: 16),
+              ],
+            ]),
+            const SizedBox(height: 6),
+            Text('"${fact.text}"', style: t.textTheme.bodyMedium),
+            if (fact.private)
+              Text('Private: I would only mention that a health note exists.',
+                  style: t.textTheme.bodySmall),
+            Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+              TextButton(onPressed: () => s.dismissSuggestion(fact), child: const Text('No thanks')),
+              FilledButton.tonal(onPressed: () => s.confirmFact(fact), child: const Text('Remember')),
+            ]),
+          ]),
+        ),
       ),
     );
   }

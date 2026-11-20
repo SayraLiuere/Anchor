@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import '../config.dart' as config;
 import '../models/log_entry.dart';
 import 'chat_context.dart';
+import 'memory.dart';
 import 'features.dart';
 import 'risk_model.dart';
 
@@ -136,7 +137,7 @@ $_safety''';
     final s = scrubber ?? PromptScrubber();
     final turns = history.length > 8 ? history.sublist(history.length - 8) : history;
     final system = '$chatPersona\n\nStructured context (the user\'s own data; numbers and '
-        'categories only):\n${jsonEncode(context)}';
+        'categories only):\n${jsonEncode(context)}\n\n$memoryInstructions';
     return (
       system,
       [
@@ -146,7 +147,9 @@ $_safety''';
     );
   }
 
-  Future<String> reply({
+  /// Mira's chat reply (B2) with any facts she suggests remembering (B4).
+  /// Crisis, daily-limit and template replies never carry suggestions.
+  Future<MiraReply> reply({
     required String userText,
     required BehaviourFeatures features,
     required RiskResult risk,
@@ -155,16 +158,17 @@ $_safety''';
     PromptScrubber? scrubber,
   }) async {
     // Checked on the user's own words, before anything is scrubbed or sent.
-    if (isCrisis(userText)) return crisisMessage;
+    if (isCrisis(userText)) return MiraReply(crisisMessage);
     final (system, messages) = chatPrompt(
       userText: userText,
       context: context ?? _context(features, risk),
       history: history,
       scrubber: scrubber,
     );
-    final text = await _generate(system, messages);
-    if (text != null) return text;
-    return limitReached ? dailyLimitMessage : _fallbackReply(userText, features, risk);
+    final raw = await _generate(system, messages, json: true);
+    if (raw != null) return parseMiraResponse(raw);
+    return MiraReply(
+        limitReached ? dailyLimitMessage : _fallbackReply(userText, features, risk));
   }
 
   /// What is sent for a weekly recap (B3): the recap persona and one user
@@ -192,14 +196,15 @@ $_safety''';
     return r == null ? (lastError ?? 'No response') : null;
   }
 
-  Future<String?> _generate(String system, List<(String, String)> messages) async {
+  Future<String?> _generate(String system, List<(String, String)> messages,
+      {bool json = false}) async {
     limitReached = false;
     if (!online) return null;
     try {
       final res = switch (provider) {
-        LlmProvider.proxy => await _proxy(system, messages),
-        LlmProvider.openai => await _openAi(system, messages),
-        LlmProvider.gemini => await _gemini(system, messages),
+        LlmProvider.proxy => await _proxy(system, messages, json),
+        LlmProvider.openai => await _openAi(system, messages, json),
+        LlmProvider.gemini => await _gemini(system, messages, json),
       };
       lastError = null;
       return res;
@@ -215,7 +220,7 @@ $_safety''';
 
   /// OpenAI-format request to the Anchor proxy. No key: the install ID is
   /// only used by the proxy for its daily limit.
-  Future<String> _proxy(String system, List<(String, String)> messages) async {
+  Future<String> _proxy(String system, List<(String, String)> messages, bool json) async {
     final res = await _http
         .post(
           Uri.parse('$proxyUrl/v1/chat/completions'),
@@ -227,6 +232,8 @@ $_safety''';
               for (final (role, text) in messages) {'role': role, 'content': text},
             ],
             'max_tokens': 1500,
+            // JSON mode for chat (B4): Mira answers {reply, notes, facts}.
+            if (json) 'response_format': {'type': 'json_object'},
           }),
         )
         .timeout(const Duration(seconds: 30));
@@ -239,7 +246,7 @@ $_safety''';
     return text.trim();
   }
 
-  Future<String> _openAi(String system, List<(String, String)> messages) async {
+  Future<String> _openAi(String system, List<(String, String)> messages, bool json) async {
     final res = await _http
         .post(
           Uri.parse('https://api.openai.com/v1/chat/completions'),
@@ -255,6 +262,7 @@ $_safety''';
             ],
             // Generous cap: reasoning models spend part of it before answering.
             'max_completion_tokens': 1500,
+            if (json) 'response_format': {'type': 'json_object'},
           }),
         )
         .timeout(const Duration(seconds: 30));
@@ -267,7 +275,7 @@ $_safety''';
     return text.trim();
   }
 
-  Future<String> _gemini(String system, List<(String, String)> messages) async {
+  Future<String> _gemini(String system, List<(String, String)> messages, bool json) async {
     final res = await _http
         .post(
           Uri.parse(
@@ -291,6 +299,7 @@ $_safety''';
                   ]
                 }
             ],
+            if (json) 'generationConfig': {'responseMimeType': 'application/json'},
           }),
         )
         .timeout(const Duration(seconds: 30));

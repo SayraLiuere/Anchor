@@ -16,8 +16,8 @@ void main() {
   CompanionAI ai(MockClient client, {String url = 'https://proxy.example'}) =>
       CompanionAI(client: client, proxyUrl: url)..installId = id;
 
-  Future<String> chat(CompanionAI a) =>
-      a.reply(userText: 'hey mira', features: features, risk: risk, history: []);
+  Future<String> chat(CompanionAI a) async =>
+      (await a.reply(userText: 'hey mira', features: features, risk: risk, history: [])).text;
 
   test('proxy is the default and needs no key', () {
     final a = CompanionAI(proxyUrl: 'https://proxy.example')..installId = id;
@@ -90,7 +90,7 @@ void main() {
     }));
     final r = await a.reply(
         userText: 'i want to die', features: features, risk: risk, history: []);
-    expect(r, CompanionAI.crisisMessage);
+    expect(r.text, CompanionAI.crisisMessage);
     expect(called, isFalse);
   });
 }

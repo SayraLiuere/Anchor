@@ -166,3 +166,13 @@ test('a missing key or unknown upstream fails without using a daily call', async
     assert.equal(s.calls.length, 0);
   }
 });
+
+test('JSON mode is passed on; other response formats are dropped', async () => {
+  const s = setup();
+  await handle(req({ ...chat, response_format: { type: 'json_object' } }), s.env, { fetchImpl: s.fetchImpl });
+  assert.deepEqual(s.calls.at(-1).body.response_format, { type: 'json_object' });
+  await handle(req({ ...chat, response_format: { type: 'json_schema', json_schema: { x: 1 } } }), s.env, { fetchImpl: s.fetchImpl });
+  assert.equal(s.calls.at(-1).body.response_format, undefined);
+  await handle(req(chat), s.env, { fetchImpl: s.fetchImpl });
+  assert.equal(s.calls.at(-1).body.response_format, undefined);
+});

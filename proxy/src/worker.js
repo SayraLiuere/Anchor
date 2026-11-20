@@ -98,6 +98,11 @@ export async function handle(request, env, { fetchImpl = fetch, now = new Date()
     [target.tokensField]: Math.min(Number(body.max_tokens) || MAX_TOKENS, MAX_TOKENS),
   };
   if (typeof body.temperature === 'number') upstreamBody.temperature = body.temperature;
+  // JSON mode (B4): Mira's chat answers are {reply, notes, facts}. Only this
+  // exact value is passed on; other response formats are dropped.
+  if (body.response_format?.type === 'json_object') {
+    upstreamBody.response_format = { type: 'json_object' };
+  }
 
   let upstream;
   try {

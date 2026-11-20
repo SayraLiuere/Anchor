@@ -7,6 +7,7 @@ import '../services/app_state.dart';
 import '../services/companion_ai.dart';
 import '../services/risk_model.dart';
 import '../widgets/common.dart';
+import 'remembered_screen.dart';
 import 'screen_time_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -178,6 +179,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 ),
             ],
+          ),
+          const SizedBox(height: 12),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.psychology_alt_outlined),
+              title: const Text('What Mira remembers'),
+              subtitle: Text(state.facts.isEmpty
+                  ? 'Nothing yet. Only what you confirm.'
+                  : '${state.facts.length} thing${state.facts.length == 1 ? '' : 's'} you confirmed'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.push(
+                  context, MaterialPageRoute(builder: (_) => const RememberedScreen())),
+            ),
           ),
           const SizedBox(height: 24),
           Text('Your data', style: t.textTheme.titleMedium),
