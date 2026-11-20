@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../models/log_entry.dart';
 import '../models/fact.dart';
+import '../models/context_note.dart';
 import '../services/app_state.dart';
 import '../services/companion_ai.dart';
 import '../widgets/common.dart';
@@ -91,6 +92,7 @@ class _CompanionScreenState extends State<CompanionScreen> {
                   ),
           ),
           for (final f in s.pendingFacts) _RememberCard(fact: f),
+          if (s.pendingNotes.isNotEmpty) _AddNotesCard(key: ValueKey(s.pendingNotes), notes: s.pendingNotes),
           SizedBox(
             height: 48,
             child: ListView(
@@ -267,6 +269,66 @@ class _RememberCard extends StatelessWidget {
             Row(mainAxisAlignment: MainAxisAlignment.end, children: [
               TextButton(onPressed: () => s.dismissSuggestion(fact), child: const Text('No thanks')),
               FilledButton.tonal(onPressed: () => s.confirmFact(fact), child: const Text('Remember')),
+            ]),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+/// Notes about today Mira picked up (C3). Ticked ones are saved on Add;
+/// nothing is saved otherwise.
+class _AddNotesCard extends StatefulWidget {
+  const _AddNotesCard({super.key, required this.notes});
+
+  final List<SuggestedNote> notes;
+
+  @override
+  State<_AddNotesCard> createState() => _AddNotesCardState();
+}
+
+class _AddNotesCardState extends State<_AddNotesCard> {
+  late final Set<SuggestedNote> _ticked = {...widget.notes};
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final s = context.read<AppState>();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+      child: Card(
+        color: t.colorScheme.tertiaryContainer,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(8, 10, 8, 4),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Padding(
+              padding: const EdgeInsets.only(left: 8),
+              child: Text('Add to today?', style: t.textTheme.labelLarge),
+            ),
+            for (final n in widget.notes)
+              CheckboxListTile(
+                dense: true,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                controlAffinity: ListTileControlAffinity.leading,
+                value: _ticked.contains(n),
+                onChanged: (v) => setState(() => v == true ? _ticked.add(n) : _ticked.remove(n)),
+                title: Text(n.label),
+                subtitle: Text(n.type == NoteType.health
+                    ? 'Health · private, Mira only knows a note exists'
+                    : n.label.toLowerCase().contains('gentle evening')
+                        ? 'Plan · pauses limit warnings tonight'
+                        : '${n.type.label}${n.forBlock ? ' · this block' : ' · today'}'),
+                secondary: Icon(n.type.icon),
+              ),
+            Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+              TextButton(onPressed: s.skipNotes, child: const Text('Skip')),
+              FilledButton.tonal(
+                onPressed: _ticked.isEmpty
+                    ? null
+                    : () => s.addNotes(widget.notes.where(_ticked.contains).toList()),
+                child: const Text('Add'),
+              ),
             ]),
           ]),
         ),

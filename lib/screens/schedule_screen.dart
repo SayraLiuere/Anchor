@@ -50,7 +50,7 @@ class ScheduleScreen extends StatelessWidget {
         icon: const Icon(Icons.add),
         label: const Text('Add block'),
       ),
-      body: s.blocks.isEmpty
+      body: s.blocks.isEmpty && s.notesOn(now).isEmpty
           ? const _EmptySchedule()
           : ListView(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 96),
@@ -65,6 +65,22 @@ class ScheduleScreen extends StatelessWidget {
                   ),
                 ]),
                 const SizedBox(height: 8),
+                // C3: notes about today, as chips; tap x to remove.
+                if (s.notesOn(now).isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Wrap(spacing: 8, runSpacing: 4, children: [
+                      for (final n in s.notesOn(now))
+                        InputChip(
+                          avatar: Icon(n.private ? Icons.lock_outline : n.type.icon, size: 18),
+                          label: Text(n.label +
+                              (n.blockId == null
+                                  ? ''
+                                  : ' · ${s.blocks.where((b) => b.id == n.blockId).firstOrNull?.title ?? 'a block'}')),
+                          onDeleted: () => s.deleteNote(n.id),
+                        ),
+                    ]),
+                  ),
                 if (today.isEmpty)
                   const Card(child: ListTile(title: Text('Nothing scheduled today'))),
                 for (final o in topLevel)
@@ -81,8 +97,8 @@ class ScheduleScreen extends StatelessWidget {
                           now: now,
                         )
                       : Card(child: _BlockTile(o, isNow: same(current, o))),
-                const SectionTitle('All blocks'),
-                Card(
+                if (s.blocks.isNotEmpty) const SectionTitle('All blocks'),
+                if (s.blocks.isNotEmpty) Card(
                   child: Column(children: [
                     for (final b in [...s.blocks]..sort((a, b) => a.start.compareTo(b.start)))
                       ListTile(

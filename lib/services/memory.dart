@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import '../models/context_note.dart';
 import '../models/fact.dart';
 import '../models/log_entry.dart';
 import 'chat_context.dart' show PromptScrubber;
@@ -11,8 +12,8 @@ class MiraReply {
   final String text;
   final List<SuggestedFact> facts;
 
-  /// Context notes for C3; parsed now, used once C3 exists.
-  final List<Map<String, dynamic>> notes;
+  /// Notes about today she suggests adding (C3).
+  final List<SuggestedNote> notes;
 }
 
 /// The AI is asked for {reply, notes[], facts[]} (B4). Anything that is not
@@ -40,7 +41,15 @@ MiraReply parseMiraResponse(String raw) {
       (j['reply'] as String).trim(),
       // At most two suggestions per reply, so the chat never fills with cards.
       facts: facts.take(2).toList(),
-      notes: [for (final n in (j['notes'] as List? ?? const [])) if (n is Map) Map<String, dynamic>.from(n)],
+      notes: [
+        for (final n in (j['notes'] as List? ?? const []))
+          if (n is Map && n['label'] is String && (n['label'] as String).trim().isNotEmpty)
+            SuggestedNote(
+              (n['label'] as String).trim(),
+              NoteType.fromId(n['type'] as String?),
+              forBlock: n['scope'] == 'block',
+            ),
+      ].take(3).toList(),
     );
   } catch (_) {
     return MiraReply(raw.trim());
@@ -122,4 +131,15 @@ Answer format: reply with ONLY a JSON object, no other text:
 {"reply": "<your message to the user>", "notes": [], "facts": []}
 "facts": usually empty. Add one only when the user states something lasting about themselves that would help you support them later: what helps them, what triggers their phone use, a preference, or a recurring pattern. Each fact: {"text": "<max 15 words, about the user, e.g. 'Feels restless after long lectures'>", "category": "what_helps" | "trigger" | "preference" | "pattern", "private": <true for health, medical or mental-health details, else false>}.
 Never suggest a fact that is already in things_the_user_confirmed. Use those facts naturally when they fit.
-"notes": always an empty list for now.''';
+"notes": short-lived context about TODAY that the user mentions, so the app can take it into account today. Each note: {"label": "<2-4 words>", "type": "health" | "mood" | "block_feedback" | "plan", "scope": "day" | "block"}. Examples: unwell or on their period -> {"label": "Unwell today", "type": "health", "scope": "day"}; anxious before an exam -> {"label": "Exam nerves", "type": "mood", "scope": "day"}; a class was hard to sit through -> {"label": "Draining class", "type": "block_feedback", "scope": "block"}; wants to take it easy tonight -> {"label": "Gentle evening", "type": "plan", "scope": "day"}. Use the exact label "Gentle evening" for that plan. Empty when nothing about today was said. Never repeat a note already in today_notes.''';
+
+/// What the AI sees of today's notes (C3): labels of open notes, scrubbed;
+/// health and other private notes only as a count.
+Map<String, dynamic> notesForPrompt(List<ContextNote> today, PromptScrubber scrubber) {
+  final open = today.where((n) => !n.private).toList();
+  final private = today.length - open.length;
+  return {
+    'notes': [for (final n in open) {'type': n.type.id, 'label': scrubber.scrub(n.label)}],
+    if (private > 0) 'private_health_notes_today': '$private private health note(s) exist; details are not shared',
+  };
+}

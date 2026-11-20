@@ -85,6 +85,12 @@ class MainActivity : FlutterActivity() {
                         .putString("schedule", call.argument<String>("json") ?: "[]").apply()
                     result.success(null)
                 }
+                "pauseLimitWarnings" -> {
+                    // C3 gentle evening: 0 lifts the pause.
+                    val until = call.argument<Number>("until")?.toLong() ?: 0L
+                    MiraConfig.prefs(this).edit().putLong("pauseLimitWarningsUntil", until).apply()
+                    result.success(null)
+                }
                 "markLogged" -> {
                     MiraConfig.prefs(this).edit()
                         .putString("lastLogDay", call.argument<String>("day")).apply()

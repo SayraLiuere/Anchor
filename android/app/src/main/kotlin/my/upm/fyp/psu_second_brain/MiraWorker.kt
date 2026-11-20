@@ -87,8 +87,10 @@ class MiraWorker(ctx: Context, params: WorkerParameters) : Worker(ctx, params) {
                 UsageReader.SOCIAL to "social media", UsageReader.GAMES to "games",
                 UsageReader.VIDEO to "videos", "total" to "your phone",
             )
+            // C3: a "Gentle evening" plan pauses limit warnings until morning.
+            val paused = now < prefs.getLong("pauseLimitWarningsUntil", 0L)
             for ((group, limit) in cfg.limits) {
-                if (limit <= 0) continue
+                if (limit <= 0 || paused) continue
                 val minutes = (if (group == "total") r.screenMs else r.groupMs(group)) / 60000
                 // Warn when the limit is crossed, and once more at double the limit.
                 val level = when {

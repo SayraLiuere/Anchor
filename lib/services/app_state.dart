@@ -13,6 +13,7 @@ import 'companion_ai.dart';
 import 'export.dart';
 import 'memory.dart';
 import '../models/fact.dart';
+import '../models/context_note.dart';
 import 'features.dart';
 import 'risk_model.dart';
 import '../models/schedule_block.dart';
@@ -41,7 +42,8 @@ class AppState extends ChangeNotifier {
   /// file only if secure storage fails).
   /// v5 (C1): adds blocks; logs get block_id and block_type.
   /// v6 (B4): adds facts.
-  static const schemaVersion = 6;
+  /// v7 (C3): adds context_notes.
+  static const schemaVersion = 7;
 
   /// True when the bundled Random Forest loaded (used with screen time on).
   bool get forestAvailable => riskEngine.forest != null;
@@ -121,6 +123,9 @@ class AppState extends ChangeNotifier {
             .toList();
         final dismissedAt = j['limit_suggestion_dismissed_at'] as String?;
         limitSuggestionDismissedAt = dismissedAt == null ? null : parseTimestamp(dismissedAt);
+        notes = (j['context_notes'] as List? ?? [])
+            .map((e) => ContextNote.fromJson(e as Map<String, dynamic>))
+            .toList();
         facts = (j['facts'] as List? ?? [])
             .map((e) => Fact.fromJson(e as Map<String, dynamic>))
             .toList();
@@ -146,6 +151,7 @@ class AppState extends ChangeNotifier {
     if (needsSave) await _save();
     await screen.pushSettings(nudges);
     await screen.pushSchedule(blocks);
+    _pushGentleEvening();
     await refreshDevice();
   }
 
@@ -310,6 +316,7 @@ class AppState extends ChangeNotifier {
       'usage_hourly': usageHourly.map((e) => e.toJson()).toList(),
       'blocks': blocks.map((b) => b.toJson()).toList(),
       'facts': facts.map((f) => f.toJson()).toList(),
+      'context_notes': notes.map((n) => n.toJson()).toList(),
       if (limitSuggestionDismissedAt != null)
         'limit_suggestion_dismissed_at': toOffsetIso(limitSuggestionDismissedAt!),
     }), flush: true);
@@ -474,17 +481,71 @@ class AppState extends ChangeNotifier {
           deviations: deviationsToday,
         ),
         'remembered': factsForPrompt(relevantFacts(now), scrubber),
+        'today_notes': notesForPrompt(notesOn(now), scrubber),
       },
       scrubber: scrubber,
     );
     chat.add(ChatMessage(fromUser: false, text: answer.text));
-    // B4: suggestions wait for a tap; nothing is saved here.
+    // B4/C3: suggestions wait for a tap; nothing is saved here.
     final known = facts.map((f) => f.text.toLowerCase()).toSet();
     pendingFacts = answer.facts.where((f) => !known.contains(f.text.toLowerCase())).toList();
+    final todayLabels = notesOn(now).map((n) => n.label.toLowerCase()).toSet();
+    pendingNotes = answer.notes.where((n) => !todayLabels.contains(n.label.toLowerCase())).toList();
     companionTyping = false;
     notifyListeners();
     _save();
   }
+
+  // ---------- Context notes (C3) ----------
+
+  /// Notes about a day or a block. Stored as `context_notes`.
+  List<ContextNote> notes = [];
+
+  /// Notes Mira suggested in her last reply; saved only via [addNotes].
+  List<SuggestedNote> pendingNotes = [];
+
+  List<ContextNote> notesOn(DateTime day) =>
+      notes.where((n) => n.date == dateKey(day)).toList();
+
+  /// Saves the notes the user ticked on the "Add to today?" card. A
+  /// block-scoped note is attached to the block running now, if any.
+  void addNotes(List<SuggestedNote> chosen) {
+    final now = DateTime.now();
+    final block = schedule.currentBlock(now);
+    for (final s in chosen) {
+      final note = ContextNote(
+        id: _uuid.v4(),
+        date: dateKey(now),
+        type: s.type,
+        label: s.label,
+        blockId: s.forBlock ? block?.id : null,
+      );
+      notes.add(note.isGentleEvening
+          ? ContextNote(
+              id: note.id, date: note.date, type: note.type, label: note.label,
+              blockId: note.blockId, until: gentleEveningEnds(now))
+          : note);
+    }
+    pendingNotes = [];
+    _pushGentleEvening();
+    _changed();
+  }
+
+  void skipNotes() {
+    pendingNotes = [];
+    notifyListeners();
+  }
+
+  void deleteNote(String id) {
+    notes.removeWhere((n) => n.id == id);
+    _pushGentleEvening();
+    _changed();
+  }
+
+  /// A "Gentle evening" plan pauses limit warnings until the next 06:00
+  /// (C3), also across midnight; removing it lifts the pause.
+  void _pushGentleEvening() =>
+      screen.pauseLimitWarningsUntil(warningsPausedUntil(notes, DateTime.now()));
 
   // ---------- Long-term memory (B4) ----------
 
@@ -681,6 +742,8 @@ class AppState extends ChangeNotifier {
     weeklySummaryAt = null;
     facts.clear();
     pendingFacts.clear();
+    notes.clear();
+    pendingNotes.clear();
     _changed();
   }
 

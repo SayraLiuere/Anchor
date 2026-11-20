@@ -256,6 +256,11 @@ class ScreenTimeService {
         ]),
       });
 
+  /// Pauses the worker's limit warnings until [until] (C3 gentle evening);
+  /// null lifts the pause.
+  Future<void> pauseLimitWarningsUntil(DateTime? until) =>
+      _call('pauseLimitWarnings', {'until': until?.millisecondsSinceEpoch ?? 0});
+
   Future<void> markLogged(DateTime day) =>
       _call('markLogged', {'day': DateFormat('yyyy-MM-dd').format(day)});
 
