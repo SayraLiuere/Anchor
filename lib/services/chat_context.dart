@@ -108,3 +108,47 @@ class PromptScrubber {
     return t;
   }
 }
+
+double _h(double minutes) => (minutes / 6).roundToDouble() / 10;
+
+/// Context for the weekly recap (B3, FR5): the same identifier-free data as
+/// chat, plus a day-by-day table and the risk model's result. Built from
+/// numbers only; nothing the user typed is in it.
+Map<String, dynamic> buildRecapContext({
+  required DateTime now,
+  required BehaviourFeatures features,
+  required RiskResult risk,
+  required List<UsageSummary> week,
+}) {
+  final today = DateTime(now.year, now.month, now.day);
+  return {
+    'report_date': DateFormat('EEE d MMM yyyy').format(now),
+    'risk': {
+      'level': risk.level.label,
+      'model': risk.modelName,
+      'estimated_probability_percent': (risk.score * 100).round(),
+      'reasons': risk.reasons,
+      'note': 'A screening estimate from a model trained on survey data, '
+          'not a diagnosis. Describe it in plain words.',
+    },
+    if (week.isNotEmpty)
+      'screen_time_by_day': [
+        for (final d in week)
+          {
+            'day': d.dayStart == null
+                ? '?'
+                : DateFormat('EEE d MMM').format(d.dayStart!) +
+                    (DateTime(d.dayStart!.year, d.dayStart!.month, d.dayStart!.day) == today
+                        ? ' (today so far)'
+                        : ''),
+            'screen_hours': _h(d.screenMinutes),
+            'social_hours': _h(d.socialMinutes),
+            'video_hours': _h(d.videoMinutes),
+            'games_hours': _h(d.gamesMinutes),
+            'late_night_hours': _h(d.lateNightMinutes),
+            'unlocks': d.unlocks,
+          },
+      ],
+    'last_7_days': features.toPromptJson(),
+  };
+}

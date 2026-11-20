@@ -167,16 +167,23 @@ $_safety''';
     return limitReached ? dailyLimitMessage : _fallbackReply(userText, features, risk);
   }
 
-  Future<String> weeklySummary(BehaviourFeatures features, RiskResult risk) async {
+  /// What is sent for a weekly recap (B3): the recap persona and one user
+  /// message with the structured [context]. Public so tests can check it.
+  static (String, List<(String, String)>) recapPrompt(Map<String, dynamic> context) => (
+        recapPersona,
+        [('user', 'Write this week\'s report from this data:\n${jsonEncode(context)}')],
+      );
+
+  Future<String> weeklySummary(BehaviourFeatures features, RiskResult risk,
+      {Map<String, dynamic>? context}) async {
     if (!features.hasData) {
       return 'Overview\nThere is not enough data yet for a weekly report. '
           'Log a few episodes or check-ins, or enable screen time, and a recap will be '
           'generated from your patterns.';
     }
-    final user =
-        'Write this week\'s report from this data:\n${jsonEncode(_context(features, risk))}';
-    return await _generate(recapPersona, [('user', user)]) ??
-        _fallbackSummary(features, risk);
+    final (system, messages) = recapPrompt(context ?? _context(features, risk));
+    // Offline, no proxy, or over the daily limit: the template report.
+    return await _generate(system, messages) ?? _fallbackSummary(features, risk);
   }
 
   /// Sends a tiny request so Settings can confirm the key and model work.

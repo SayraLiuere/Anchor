@@ -440,7 +440,13 @@ class AppState extends ChangeNotifier {
   Future<void> generateWeeklySummary() async {
     companionTyping = true;
     notifyListeners();
-    weeklySummary = await ai.weeklySummary(features, risk);
+    weeklySummary = await ai.weeklySummary(features, risk,
+        context: buildRecapContext(
+          now: DateTime.now(),
+          features: features,
+          risk: risk,
+          week: usageGranted ? weekUsage : const [],
+        ));
     weeklySummaryAt = DateTime.now();
     companionTyping = false;
     _changed();
