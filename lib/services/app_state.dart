@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models/log_entry.dart';
+import 'baseline.dart';
 import 'chat_context.dart';
 import 'companion_ai.dart';
 import 'export.dart';
@@ -118,6 +119,8 @@ class AppState extends ChangeNotifier {
         usageDaily = (j['usage_daily'] as List? ?? [])
             .map((e) => DaySnapshot.fromJson(e as Map<String, dynamic>))
             .toList();
+        final dismissedAt = j['limit_suggestion_dismissed_at'] as String?;
+        limitSuggestionDismissedAt = dismissedAt == null ? null : parseTimestamp(dismissedAt);
         facts = (j['facts'] as List? ?? [])
             .map((e) => Fact.fromJson(e as Map<String, dynamic>))
             .toList();
@@ -231,7 +234,51 @@ class AppState extends ChangeNotifier {
     logs.sort((a, b) => b.timestamp.compareTo(a.timestamp));
     features = BehaviourFeatures.fromLogs(logs,
         screen: usageGranted ? ScreenTimeFeatures.fromDaily(weekUsage) : null);
-    risk = riskEngine.predict(features);
+    final predicted = riskEngine.predict(features);
+    // C2: compare today with the user's usual; big rises become reasons.
+    baseline = Baseline.from(usageDaily, usageHourly);
+    deviationsToday = baseline != null && usageGranted && todayUsage != null
+        ? baseline!.compareToday(todayUsage!, DateTime.now())
+        : const [];
+    final extra = deviationReasons(deviationsToday);
+    risk = extra.isEmpty
+        ? predicted
+        : RiskResult(predicted.level, predicted.score, [...predicted.reasons, ...extra],
+            predicted.modelName);
+  }
+
+  // ---------- Personal baseline (C2) ----------
+
+  /// Null until there are 7 saved days.
+  Baseline? baseline;
+
+  /// Today so far against the usual by the same time of day.
+  List<Deviation> deviationsToday = const [];
+
+  /// When the user last said "Not now" to suggested limits (hidden 7 days).
+  DateTime? limitSuggestionDismissedAt;
+
+  /// Suggested limits that differ from the current ones by 5+ minutes;
+  /// empty when there is nothing to offer.
+  Map<String, int> get limitSuggestions {
+    final b = baseline;
+    final dismissed = limitSuggestionDismissedAt;
+    if (b == null ||
+        (dismissed != null && DateTime.now().difference(dismissed).inDays < 7)) {
+      return const {};
+    }
+    return {
+      for (final e in b.suggestedLimits().entries)
+        if (((nudges.limits[e.key] ?? 0) - e.value).abs() >= 5) e.key: e.value,
+    };
+  }
+
+  void acceptSuggestedLimits(Map<String, int> limits) =>
+      updateNudges((n) => n.limits.addAll(limits));
+
+  void dismissSuggestedLimits() {
+    limitSuggestionDismissedAt = DateTime.now();
+    _changed();
   }
 
   Future<void> _saving = Future.value();
@@ -263,6 +310,8 @@ class AppState extends ChangeNotifier {
       'usage_hourly': usageHourly.map((e) => e.toJson()).toList(),
       'blocks': blocks.map((b) => b.toJson()).toList(),
       'facts': facts.map((f) => f.toJson()).toList(),
+      if (limitSuggestionDismissedAt != null)
+        'limit_suggestion_dismissed_at': toOffsetIso(limitSuggestionDismissedAt!),
     }), flush: true);
     await tmp.rename(_file!.path);
   }
@@ -422,6 +471,7 @@ class AppState extends ChangeNotifier {
           logs: logs,
           today: usageGranted ? todayUsage : null,
           schedule: schedule,
+          deviations: deviationsToday,
         ),
         'remembered': factsForPrompt(relevantFacts(now), scrubber),
       },
@@ -545,6 +595,7 @@ class AppState extends ChangeNotifier {
           features: features,
           risk: risk,
           week: usageGranted ? weekUsage : const [],
+          baseline: baseline,
         ));
     weeklySummaryAt = DateTime.now();
     companionTyping = false;

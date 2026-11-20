@@ -6,6 +6,7 @@ import '../models/log_entry.dart';
 import '../models/schedule_block.dart';
 import 'features.dart';
 import 'risk_model.dart';
+import 'baseline.dart';
 import 'schedule_service.dart';
 import 'screen_time.dart';
 
@@ -32,6 +33,7 @@ Map<String, dynamic> buildChatContext({
   required List<LogEntry> logs,
   UsageSummary? today,
   ScheduleService? schedule,
+  List<Deviation> deviations = const [],
 }) {
   final recent = [...logs]..sort((a, b) => b.timestamp.compareTo(a.timestamp));
   return {
@@ -39,6 +41,16 @@ Map<String, dynamic> buildChatContext({
     'current_risk_level': risk.level.label,
     'risk_reasons': risk.reasons,
     if (schedule != null && schedule.blocks.isNotEmpty) 'schedule_today': _schedule(schedule, now),
+    if (deviations.isNotEmpty)
+      'today_vs_usual_by_now': [
+        for (final d in deviations)
+          {
+            'category': d.category,
+            'today_minutes': _r(d.today),
+            'usual_minutes_by_now': _r(d.usual),
+            if (d.percent != null) 'percent_difference': d.percent!.round(),
+          },
+      ],
     if (today != null) 'today_minutes': _today(today),
     'last_7_days': features.toPromptJson(),
     'recent_logs': [for (final l in recent.take(3)) _log(l, now)],
@@ -144,6 +156,7 @@ Map<String, dynamic> buildRecapContext({
   required BehaviourFeatures features,
   required RiskResult risk,
   required List<UsageSummary> week,
+  Baseline? baseline,
 }) {
   final today = DateTime(now.year, now.month, now.day);
   return {
@@ -174,6 +187,36 @@ Map<String, dynamic> buildRecapContext({
             'unlocks': d.unlocks,
           },
       ],
+    if (baseline != null && week.isNotEmpty) 'compared_with_usual': _vsUsual(baseline, week, today),
     'last_7_days': features.toPromptJson(),
+  };
+}
+
+/// This week's average complete day against the user's usual day (C2):
+/// the median of all saved days, per category, in hours.
+Map<String, dynamic> _vsUsual(Baseline b, List<UsageSummary> week, DateTime today) {
+  final complete = week.where((d) => d.dayStart != null && d.dayStart!.isBefore(today)).toList();
+  if (complete.isEmpty) return const {};
+  double avg(double Function(UsageSummary) f) =>
+      complete.map(f).reduce((a, c) => a + c) / complete.length;
+  final thisWeek = {
+    'screen': avg((d) => d.screenMinutes),
+    'social': avg((d) => d.socialMinutes),
+    'video': avg((d) => d.videoMinutes),
+    'games': avg((d) => d.gamesMinutes),
+  };
+  return {
+    'usual_from_saved_days': b.days.length,
+    for (final c in baselineCategories)
+      c: () {
+        final usual = median([
+          for (final d in b.days) c == 'screen' ? d.totalMinutes - d.group('audio') : d.group(c)
+        ]);
+        return {
+          'this_week_hours_per_day': _h(thisWeek[c]!),
+          'usual_hours_per_day': _h(usual),
+          if (usual >= 5) 'percent_difference': ((thisWeek[c]! - usual) / usual * 100).round(),
+        };
+      }(),
   };
 }

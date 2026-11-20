@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../main.dart';
 import '../models/log_entry.dart';
 import '../services/app_state.dart';
+import '../services/baseline.dart';
 import '../services/risk_model.dart';
 import '../services/screen_time.dart';
 import '../widgets/common.dart';
@@ -130,6 +131,10 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
           ScreenTimeCard(state: s),
           const SizedBox(height: 14),
+          if (s.baseline != null && s.usageGranted && s.todayUsage != null) ...[
+            BaselineCard(state: s),
+            const SizedBox(height: 14),
+          ],
           RiskCard(
             risk: s.risk,
             hint: s.forestAvailable && s.features.screen == null
@@ -523,5 +528,70 @@ class DraftsCard extends StatelessWidget {
     if (day == today) return 'Today, $time';
     if (today.difference(day).inDays == 1) return 'Yesterday, $time';
     return DateFormat('EEE, h:mm a').format(d);
+  }
+}
+
+/// Today against the user's own usual (C2): the biggest rise, if any, and
+/// suggested limits from their usual day to accept or skip.
+class BaselineCard extends StatelessWidget {
+  const BaselineCard({super.key, required this.state});
+
+  final AppState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final d = headlineDeviation(state.deviationsToday);
+    final screen = state.deviationsToday.where((x) => x.category == 'screen').firstOrNull;
+    final suggestions = state.limitSuggestions;
+    const names = {'total': 'Total', 'social': 'Social', 'video': 'Videos', 'games': 'Games'};
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Icon(d == null ? Icons.check_circle_outline : Icons.trending_up,
+                color: d == null ? riskColor(RiskLevel.low) : riskColor(RiskLevel.medium)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                d != null
+                    ? '${baselineLabel(d.category)} +${d.percent!.round()}% vs ${d.usualPhrase}'
+                    : 'About ${screen?.usualPhrase ?? 'your usual day'} so far',
+                style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 4),
+          if (d != null)
+            Text('${formatMinutes(d.today)} so far, usually ${formatMinutes(d.usual)} by now',
+                style: t.textTheme.bodySmall)
+          else if (screen != null)
+            Text('${formatMinutes(screen.today)} of screen time, usually '
+                '${formatMinutes(screen.usual)} by now', style: t.textTheme.bodySmall),
+          Text('Based on your last ${state.baseline!.days.length} saved days',
+              style: t.textTheme.labelSmall?.copyWith(color: t.colorScheme.outline)),
+          if (suggestions.isNotEmpty) ...[
+            const Divider(height: 20),
+            Text('Limits from your usual day (minus 10%)', style: t.textTheme.labelLarge),
+            const SizedBox(height: 4),
+            Text(
+              suggestions.entries
+                  .map((e) => '${names[e.key] ?? e.key} ${formatMinutes(e.value)}'
+                      ' (now ${formatMinutes(state.nudges.limits[e.key] ?? 0)})')
+                  .join(' · '),
+              style: t.textTheme.bodySmall,
+            ),
+            Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+              TextButton(onPressed: state.dismissSuggestedLimits, child: const Text('Not now')),
+              FilledButton.tonal(
+                onPressed: () => state.acceptSuggestedLimits(suggestions),
+                child: const Text('Use these'),
+              ),
+            ]),
+          ],
+        ]),
+      ),
+    );
   }
 }
