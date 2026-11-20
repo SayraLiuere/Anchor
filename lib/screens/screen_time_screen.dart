@@ -110,23 +110,88 @@ class ScreenTimeScreen extends StatelessWidget {
         padding: const EdgeInsets.only(top: 6, left: 4),
         child: Text('Darker part = social media + videos (hours)', style: t.textTheme.labelSmall),
       ),
-      const SectionTitle('Top apps today'),
-      Card(
-        child: Column(
-          children: [
-            if (u.apps.isEmpty) const ListTile(title: Text('No app usage yet today')),
-            for (final a in u.apps.take(8))
-              ListTile(
-                dense: true,
-                leading: Icon(groupIcon(a.group)),
-                title: Text(a.label),
-                subtitle: Text('${groupLabel(a.group)} · opened ${a.opens}×'),
-                trailing: Text(formatMinutes(a.minutes), style: t.textTheme.labelLarge),
-              ),
-          ],
-        ),
-      ),
+      const SectionTitle('Apps'),
+      _AppsCard(today: u),
     ];
+  }
+}
+
+/// Per-app minutes for today or yesterday. Yesterday is a full midnight-to-
+/// midnight day, so it can be checked against Digital Wellbeing (A4).
+class _AppsCard extends StatefulWidget {
+  const _AppsCard({required this.today});
+
+  final UsageSummary today;
+
+  @override
+  State<_AppsCard> createState() => _AppsCardState();
+}
+
+class _AppsCardState extends State<_AppsCard> {
+  bool _yesterday = false;
+  bool _showAll = false;
+  Future<UsageSummary?>? _y;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.only(top: 12, bottom: 4),
+        child: Column(children: [
+          SegmentedButton<bool>(
+            segments: const [
+              ButtonSegment(value: false, label: Text('Today')),
+              ButtonSegment(value: true, label: Text('Yesterday')),
+            ],
+            selected: {_yesterday},
+            onSelectionChanged: (v) => setState(() {
+              _yesterday = v.first;
+              if (_yesterday) _y = context.read<AppState>().screen.yesterday();
+            }),
+          ),
+          if (!_yesterday)
+            _list(t, widget.today, 'No app usage yet today')
+          else
+            FutureBuilder<UsageSummary?>(
+              future: _y,
+              builder: (context, snap) => snap.connectionState != ConnectionState.done
+                  ? const Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator())
+                  : snap.data == null
+                      ? const ListTile(title: Text("Couldn't read yesterday's usage"))
+                      : _list(t, snap.data!, 'No app usage yesterday',
+                          hint: 'Compare with Settings > Digital Wellbeing for yesterday'),
+            ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _list(ThemeData t, UsageSummary u, String empty, {String? hint}) {
+    final apps = u.apps.where((a) => a.minutes >= 0.5).toList();
+    final shown = _showAll ? apps : apps.take(8).toList();
+    return Column(children: [
+      ListTile(
+        dense: true,
+        title: Text('Total ${formatMinutes(u.totalMinutes)} · ${u.unlocks} unlocks',
+            style: t.textTheme.titleSmall),
+        subtitle: hint == null ? null : Text(hint),
+      ),
+      if (apps.isEmpty) ListTile(title: Text(empty)),
+      for (final a in shown)
+        ListTile(
+          dense: true,
+          leading: Icon(groupIcon(a.group)),
+          title: Text(a.label),
+          subtitle: Text('${groupLabel(a.group)} · opened ${a.opens}×'),
+          trailing: Text(formatMinutes(a.minutes), style: t.textTheme.labelLarge),
+        ),
+      if (apps.length > 8)
+        TextButton(
+          onPressed: () => setState(() => _showAll = !_showAll),
+          child: Text(_showAll ? 'Show fewer' : 'Show all ${apps.length} apps'),
+        ),
+    ]);
   }
 }
 

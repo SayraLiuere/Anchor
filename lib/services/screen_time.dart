@@ -178,14 +178,27 @@ class ScreenTimeService {
   Future<void> requestNotificationPermission() =>
       _call('requestNotificationPermission');
 
-  Future<UsageSummary?> today() async {
+  Future<UsageSummary?> today() {
     final now = DateTime.now();
-    final start = DateTime(now.year, now.month, now.day).millisecondsSinceEpoch;
+    return usage(DateTime(now.year, now.month, now.day), now);
+  }
+
+  /// Yesterday, midnight to midnight: for comparing with Digital Wellbeing (A4).
+  Future<UsageSummary?> yesterday() {
+    final now = DateTime.now();
+    return usage(DateTime(now.year, now.month, now.day - 1),
+        DateTime(now.year, now.month, now.day));
+  }
+
+  /// Foreground use between [start] and [end], with per-app minutes.
+  Future<UsageSummary?> usage(DateTime start, DateTime end) async {
     final m = await _call<Map>('getUsage', {
-      'start': start,
-      'end': now.millisecondsSinceEpoch,
+      'start': start.millisecondsSinceEpoch,
+      'end': end.millisecondsSinceEpoch,
     });
-    return m == null ? null : UsageSummary.fromMap({...m, 'dayStart': start});
+    return m == null
+        ? null
+        : UsageSummary.fromMap({...m, 'dayStart': start.millisecondsSinceEpoch});
   }
 
   /// Raw sessions (group and times only) and unlock times between [start] and

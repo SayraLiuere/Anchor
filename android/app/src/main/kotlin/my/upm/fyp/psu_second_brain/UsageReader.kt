@@ -144,9 +144,32 @@ object UsageReader {
         )
     }
 
+    /**
+     * Events are read from this long before `start`, so a session already
+     * running at `start` (e.g. across midnight) is found and counted from
+     * `start` on, instead of being missed until the next app switch.
+     */
+    private const val LOOKBACK_MS = 3 * 3600_000L
+
+    /** A pause not followed by a resume of the same app within this ends the session. */
+    private const val PAUSE_GRACE_MS = 3000L
+
+    // Event types added in API 29; the values are inlined, and older phones never send them.
+    private const val DEVICE_SHUTDOWN = 26
+    private const val DEVICE_STARTUP = 27
+
+    /**
+     * Foreground use between [start] and [end], one app at a time.
+     *
+     * A session ends when another app (or the launcher) comes to the front, the
+     * app pauses for more than 3 s, the screen turns off, the lock screen shows,
+     * or the phone shuts down. Times in [Result.apps] and late-night minutes are
+     * clipped to [start, end); [Result.sessions] keep their real start so draft
+     * ids stay stable, and only sessions that reach past [start] are returned.
+     */
     fun read(ctx: Context, start: Long, end: Long): Result {
         val usm = ctx.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
-        val events = usm.queryEvents(start, end)
+        val events = usm.queryEvents(start - LOOKBACK_MS, end)
         val skip = ignored(ctx)
         val apps = HashMap<String, AppUsage>()
         val sessions = ArrayList<Session>()
@@ -156,43 +179,55 @@ object UsageReader {
         var current: String? = null
         var currentStart = 0L
         var pausedAt = -1L // brief pause inside the same app (activity switch)
+        var lastT = start - LOOKBACK_MS
 
         fun close(at: Long) {
             val pkg = current ?: return
-            if (at > currentStart) {
+            val from = maxOf(currentStart, start)
+            if (at > from) {
                 sessions.add(Session(pkg, currentStart, at))
                 val (label, group) = describe(ctx, pkg)
-                apps.getOrPut(pkg) { AppUsage(pkg, label, group) }.ms += at - currentStart
+                apps.getOrPut(pkg) { AppUsage(pkg, label, group) }.ms += at - from
             }
             current = null
             pausedAt = -1
         }
 
+        fun endAt(t: Long) = close(if (pausedAt >= 0) pausedAt else t)
+
         val e = UsageEvents.Event()
         while (events.hasNextEvent()) {
             events.getNextEvent(e)
             val t = e.timeStamp
+            // Any event long after a pause means the app did not come back.
+            if (pausedAt >= 0 && t - pausedAt > PAUSE_GRACE_MS) close(pausedAt)
             when (e.eventType) {
                 UsageEvents.Event.ACTIVITY_RESUMED -> {
                     val pkg = e.packageName
                     if (pkg == current) {
                         pausedAt = -1 // same app, keep the session going
                     } else {
-                        if (current != null) close(if (pausedAt >= 0) pausedAt else t)
+                        if (current != null) endAt(t)
                         if (pkg !in skip) {
                             current = pkg
                             currentStart = t
-                            val (label, group) = describe(ctx, pkg)
-                            apps.getOrPut(pkg) { AppUsage(pkg, label, group) }.opens++
+                            if (t >= start) {
+                                val (label, group) = describe(ctx, pkg)
+                                apps.getOrPut(pkg) { AppUsage(pkg, label, group) }.opens++
+                            }
                         }
                     }
                 }
                 UsageEvents.Event.ACTIVITY_PAUSED -> if (e.packageName == current) pausedAt = t
-                UsageEvents.Event.SCREEN_NON_INTERACTIVE -> close(if (pausedAt >= 0) pausedAt else t)
-                UsageEvents.Event.KEYGUARD_HIDDEN -> { unlocks++; unlockTimes.add(t) }
+                UsageEvents.Event.SCREEN_NON_INTERACTIVE,
+                UsageEvents.Event.KEYGUARD_SHOWN,
+                DEVICE_SHUTDOWN -> endAt(t)
+                // Still open at startup: the phone died without a shutdown event,
+                // so end it at the last thing we saw before that.
+                DEVICE_STARTUP -> endAt(lastT)
+                UsageEvents.Event.KEYGUARD_HIDDEN -> if (t >= start) { unlocks++; unlockTimes.add(t) }
             }
-            // A pause that isn't followed by a resume of the same app within 3 s ends the session.
-            if (pausedAt >= 0 && t - pausedAt > 3000) close(pausedAt)
+            lastT = t
         }
 
         var ongoing: Session? = null
@@ -205,12 +240,13 @@ object UsageReader {
             }
         }
 
+        fun clipped(s: Session) = s.end - maxOf(s.start, start)
         return Result(
             apps = apps,
             unlocks = unlocks,
             unlockTimes = unlockTimes,
-            lateNightMs = sessions.sumOf { lateNightOverlap(it.start, it.end) },
-            longest = sessions.maxByOrNull { it.end - it.start },
+            lateNightMs = sessions.sumOf { lateNightOverlap(maxOf(it.start, start), it.end) },
+            longest = sessions.maxByOrNull { clipped(it) }?.let { Session(it.pkg, maxOf(it.start, start), it.end) },
             ongoing = ongoing,
             sessions = sessions,
         )
