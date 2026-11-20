@@ -1,0 +1,30 @@
+# Cloudflare Worker config for the Anchor LLM proxy (B1). See proxy/README.md.
+name = "anchor-proxy"
+main = "src/worker.js"
+compatibility_date = "2025-06-01"
+
+# No request logs: message content must never be stored (thesis 3.8).
+[observability]
+enabled = false
+
+[vars]
+# Which AI service to forward to: "openai" or "openrouter".
+# Switching later = change these three lines, set the matching secret, redeploy.
+UPSTREAM = "openai"
+# Model used when the app asks for "default". Must also be in ALLOWED_MODELS.
+# OpenAI IDs look like "gpt-4.1-mini"; OpenRouter IDs like "openai/gpt-4.1-mini".
+DEFAULT_MODEL = "gpt-4.1-mini"
+ALLOWED_MODELS = "gpt-4.1-mini"
+# Calls per install per day, and the time zone the day is counted in (UTC+8).
+DAILY_LIMIT = "50"
+DAY_OFFSET_MINUTES = "480"
+
+# Per-install daily counters. Create with: npx wrangler kv namespace create USAGE
+[[kv_namespaces]]
+binding = "USAGE"
+id = "1c1c65a2af7643e4a546ef84f6c088ec"
+
+# The API key is a secret, never in this file. For UPSTREAM = "openai":
+#   npx wrangler secret put OPENAI_KEY
+# For UPSTREAM = "openrouter":
+#   npx wrangler secret put OPENROUTER_KEY

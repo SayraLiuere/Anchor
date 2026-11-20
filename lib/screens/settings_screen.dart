@@ -28,18 +28,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<bool> _confirm(String title, String body) async =>
       await showDialog<bool>(
         context: context,
-        builder: (c) => AlertDialog(
-          title: Text(title),
-          content: Text(body),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(c, false),
-                child: const Text('Cancel')),
-            FilledButton(
-                onPressed: () => Navigator.pop(c, true),
-                child: const Text('Continue')),
-          ],
-        ),
+        builder:
+            (c) => AlertDialog(
+              title: Text(title),
+              content: Text(body),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(c, false),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(c, true),
+                  child: const Text('Continue'),
+                ),
+              ],
+            ),
       ) ??
       false;
 
@@ -55,7 +58,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           TextField(
             controller: _name,
             decoration: const InputDecoration(
-                labelText: 'Nickname', prefixIcon: Icon(Icons.person_outline)),
+              labelText: 'Nickname',
+              prefixIcon: Icon(Icons.person_outline),
+            ),
             onChanged: (v) => s.updateSettings(name: v),
           ),
           const SizedBox(height: 24),
@@ -63,21 +68,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: ListTile(
               leading: const Icon(Icons.hourglass_bottom),
               title: const Text('Screen time & notifications'),
-              subtitle: Text(state.usageGranted
-                  ? 'Usage access on · ${state.notificationsGranted ? 'notifications on' : 'notifications off'}'
-                  : 'Usage access off'),
+              subtitle: Text(
+                state.usageGranted
+                    ? 'Usage access on · ${state.notificationsGranted ? 'notifications on' : 'notifications off'}'
+                    : 'Usage access off',
+              ),
               trailing: const Icon(Icons.chevron_right),
-              onTap: () => Navigator.push(context,
-                  MaterialPageRoute(builder: (_) => const ScreenTimeScreen())),
+              onTap:
+                  () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const ScreenTimeScreen()),
+                  ),
             ),
           ),
           const SizedBox(height: 24),
           Text('AI companion (LLM)', style: t.textTheme.titleMedium),
           const SizedBox(height: 6),
           Text(
-            'Add an API key to enable AI replies and weekly recaps. Without a key, '
-            'Mira uses built-in template replies. Only anonymous summary numbers and '
-            'the text you type are sent.',
+            state.ai.provider == LlmProvider.proxy
+                ? (state.ai.online
+                    ? 'Mira replies through Anchor\'s own AI service: no key needed, about '
+                        '50 messages a day. Only anonymous summary numbers and the text you '
+                        'type are sent. Without internet, Mira uses built-in replies.'
+                    : 'Anchor\'s AI service is not set up in this build yet, so Mira uses '
+                        'built-in replies.')
+                : 'Developer option: your own API key, kept in Android\'s secure storage. '
+                    'Only anonymous summary numbers and the text you type are sent.',
             style: t.textTheme.bodySmall,
           ),
           const SizedBox(height: 12),
@@ -90,61 +106,79 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onSelectionChanged: (v) {
               s.updateSettings(provider: v.first);
               _model.text = s.ai.model;
+              setState(() => _testResult = null);
             },
           ),
           const SizedBox(height: 12),
-          TextField(
-            controller: _key,
-            obscureText: !_showKey,
-            decoration: InputDecoration(
-              labelText: '${state.ai.provider.label} API key',
-              prefixIcon: const Icon(Icons.key),
-              suffixIcon: IconButton(
-                icon: Icon(_showKey ? Icons.visibility_off : Icons.visibility),
-                onPressed: () => setState(() => _showKey = !_showKey),
+          if (state.ai.provider.needsKey) ...[
+            TextField(
+              controller: _key,
+              obscureText: !_showKey,
+              decoration: InputDecoration(
+                labelText: '${state.ai.provider.label} API key',
+                prefixIcon: const Icon(Icons.key),
+                suffixIcon: IconButton(
+                  icon: Icon(
+                    _showKey ? Icons.visibility_off : Icons.visibility,
+                  ),
+                  onPressed: () => setState(() => _showKey = !_showKey),
+                ),
               ),
+              onChanged: (v) => s.updateSettings(apiKey: v),
             ),
-            onChanged: (v) => s.updateSettings(apiKey: v),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _model,
-            decoration: const InputDecoration(
-                labelText: 'Model', prefixIcon: Icon(Icons.memory)),
-            onChanged: (v) => s.updateSettings(model: v),
-          ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _model,
+              decoration: const InputDecoration(
+                labelText: 'Model',
+                prefixIcon: Icon(Icons.memory),
+              ),
+              onChanged: (v) => s.updateSettings(model: v),
+            ),
+          ],
           const SizedBox(height: 8),
-          Row(children: [
-            OutlinedButton.icon(
-              onPressed: _testing || !state.ai.online
-                  ? null
-                  : () async {
-                      setState(() => _testing = true);
-                      final err = await s.ai.testConnection();
-                      if (!mounted) return;
-                      setState(() {
-                        _testing = false;
-                        _testResult = err ?? 'Connected ✓';
-                      });
-                    },
-              icon: _testing
-                  ? const SizedBox(
-                      width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Icon(Icons.wifi_tethering),
-              label: const Text('Test connection'),
-            ),
-            const SizedBox(width: 12),
-            if (_testResult != null)
-              Expanded(
-                child: Text(_testResult!,
+          Row(
+            children: [
+              OutlinedButton.icon(
+                onPressed:
+                    _testing || !state.ai.online
+                        ? null
+                        : () async {
+                          setState(() => _testing = true);
+                          final err = await s.ai.testConnection();
+                          if (!mounted) return;
+                          setState(() {
+                            _testing = false;
+                            _testResult = err ?? 'Connected ✓';
+                          });
+                        },
+                icon:
+                    _testing
+                        ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                        : const Icon(Icons.wifi_tethering),
+                label: const Text('Test connection'),
+              ),
+              const SizedBox(width: 12),
+              if (_testResult != null)
+                Expanded(
+                  child: Text(
+                    _testResult!,
                     maxLines: 3,
                     overflow: TextOverflow.ellipsis,
                     style: t.textTheme.bodySmall?.copyWith(
-                        color: _testResult!.startsWith('Connected')
-                            ? riskColor(RiskLevel.low)
-                            : t.colorScheme.error)),
-              ),
-          ]),
+                      color:
+                          _testResult!.startsWith('Connected')
+                              ? riskColor(RiskLevel.low)
+                              : t.colorScheme.error,
+                    ),
+                  ),
+                ),
+            ],
+          ),
           const SizedBox(height: 24),
           Text('Your data', style: t.textTheme.titleMedium),
           ListTile(
@@ -157,18 +191,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
             contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.ios_share),
             title: const Text('Share my data (JSON file)'),
-            subtitle: Text('${state.usageDaily.length} days of screen time and '
-                '${state.logs.length} logs. No name, chat or key.'),
+            subtitle: Text(
+              '${state.usageDaily.length} days of screen time and '
+              '${state.logs.length} logs. No name, chat or key.',
+            ),
             onTap: () async {
               final messenger = ScaffoldMessenger.of(context);
               try {
                 final f = await state.writeExportFile();
-                await Share.shareXFiles(
-                  [XFile(f.path, mimeType: 'application/json')],
-                  subject: 'Anchor data export',
-                );
+                await Share.shareXFiles([
+                  XFile(f.path, mimeType: 'application/json'),
+                ], subject: 'Anchor data export');
               } catch (e) {
-                messenger.showSnackBar(SnackBar(content: Text('Could not share: $e')));
+                messenger.showSnackBar(
+                  SnackBar(content: Text('Could not share: $e')),
+                );
               }
             },
           ),
@@ -179,9 +216,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
             subtitle: const Text('Same export, as text on the clipboard'),
             onTap: () async {
               final messenger = ScaffoldMessenger.of(context);
-              await Clipboard.setData(ClipboardData(text: await state.exportJson()));
+              await Clipboard.setData(
+                ClipboardData(text: await state.exportJson()),
+              );
               messenger.showSnackBar(
-                  const SnackBar(content: Text('Export copied to clipboard')));
+                const SnackBar(content: Text('Export copied to clipboard')),
+              );
             },
           ),
           if (state.syntheticCount == 0)
@@ -202,11 +242,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ListTile(
             contentPadding: EdgeInsets.zero,
             leading: Icon(Icons.delete_forever, color: t.colorScheme.error),
-            title: Text('Erase everything',
-                style: TextStyle(color: t.colorScheme.error)),
+            title: Text(
+              'Erase everything',
+              style: TextStyle(color: t.colorScheme.error),
+            ),
             onTap: () async {
-              if (await _confirm('Erase all data?',
-                  'All logs, chats and recaps will be permanently deleted.')) {
+              if (await _confirm(
+                'Erase all data?',
+                'All logs, chats and recaps will be permanently deleted.',
+              )) {
                 state.clearAll();
               }
             },

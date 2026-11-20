@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../models/log_entry.dart';
 import '../services/app_state.dart';
+import '../services/companion_ai.dart';
 import '../widgets/common.dart';
 
 /// Companion chat: reflective mini vents with fast tags (FR2, FR5, FR7).
@@ -55,7 +56,12 @@ class _CompanionScreenState extends State<CompanionScreen> {
           const SizedBox(width: 10),
           Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             const Text('Mira'),
-            Text(s.ai.online ? 'AI companion · ${s.ai.model}' : 'Offline mode',
+            Text(
+                !s.ai.online
+                    ? 'Offline mode'
+                    : s.ai.provider == LlmProvider.proxy
+                        ? 'AI companion'
+                        : 'AI companion · ${s.ai.model}',
                 style: t.textTheme.labelSmall),
           ]),
         ]),

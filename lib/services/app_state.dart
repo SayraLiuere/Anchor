@@ -12,6 +12,7 @@ import 'export.dart';
 import 'features.dart';
 import 'risk_model.dart';
 import 'screen_time.dart';
+import 'secret_store.dart';
 import 'usage_snapshots.dart';
 
 /// Mira's pet mood, shown on her face and in her lines.
@@ -30,7 +31,9 @@ class AppState extends ChangeNotifier {
   /// defaults; keys are only ever added, never renamed or removed.
   /// v2 (A2): adds usage_daily and usage_hourly.
   /// v3 (A3): timestamps carry their UTC offset; day rows get day_start.
-  static const schemaVersion = 3;
+  /// v4 (B1): adds install_id; apiKey moves to secure storage (kept in the
+  /// file only if secure storage fails).
+  static const schemaVersion = 4;
 
   /// True when the bundled Random Forest loaded (used with screen time on).
   bool get forestAvailable => riskEngine.forest != null;
@@ -62,8 +65,19 @@ class AppState extends ChangeNotifier {
 
   File? _file;
 
+  final secrets = SecretStore();
+
+  /// Random ID made on first launch (B1), sent to the proxy for its daily
+  /// limit. Stored as install_id; not in the export.
+  String installId = '';
+
+  /// False only when secure storage failed, so the key stays in the JSON.
+  bool _keyInSecureStorage = true;
+
   Future<void> init() async {
     riskEngine = await RiskEngine.load();
+    String? savedProvider, savedModel;
+    var jsonKey = '';
     try {
       final dir = await getApplicationDocumentsDirectory();
       _file = File('${dir.path}/second_brain.json');
@@ -76,9 +90,10 @@ class AppState extends ChangeNotifier {
             .map((e) => ChatMessage.fromJson(e as Map<String, dynamic>))
             .toList();
         displayName = j['displayName'] as String? ?? '';
-        ai.provider = LlmProvider.values.asNameMap()[j['provider']] ?? LlmProvider.openai;
-        ai.apiKey = j['apiKey'] as String? ?? '';
-        ai.model = j['model'] as String? ?? ai.provider.defaultModel;
+        savedProvider = j['provider'] as String?;
+        savedModel = j['model'] as String?;
+        jsonKey = j['apiKey'] as String? ?? '';
+        installId = j['install_id'] as String? ?? '';
         weeklySummary = j['weeklySummary'] as String?;
         final at = j['weeklySummaryAt'] as String?;
         weeklySummaryAt = at == null ? null : parseTimestamp(at);
@@ -99,6 +114,7 @@ class AppState extends ChangeNotifier {
     } catch (e) {
       debugPrint('Failed to load data: $e');
     }
+    final needsSave = await _loadAiSettings(savedProvider, savedModel, jsonKey);
     screen.onLaunchAction = (a) {
       pendingAction = a;
       notifyListeners();
@@ -107,8 +123,34 @@ class AppState extends ChangeNotifier {
     _recompute();
     loading = false;
     notifyListeners();
+    if (needsSave) await _save();
     await screen.pushSettings(nudges);
     await refreshDevice();
+  }
+
+  /// B1: the Anchor proxy is the default; a developer key moves from the
+  /// JSON into secure storage (it stays in the JSON only if that fails);
+  /// a random install ID is made once. Returns true when the file must be
+  /// saved again (new ID, or a key to drop from the JSON).
+  Future<bool> _loadAiSettings(String? savedProvider, String? savedModel, String jsonKey) async {
+    var changed = false;
+    if (jsonKey.isNotEmpty) {
+      ai.apiKey = jsonKey;
+      _keyInSecureStorage = await secrets.writeApiKey(jsonKey);
+      changed = _keyInSecureStorage;
+    } else {
+      ai.apiKey = await secrets.readApiKey() ?? '';
+    }
+    ai.provider = providerAfterLoad(savedProvider, hasKey: ai.apiKey.isNotEmpty);
+    ai.model = ai.provider == LlmProvider.proxy
+        ? ai.provider.defaultModel
+        : savedModel ?? ai.provider.defaultModel;
+    if (installId.isEmpty) {
+      installId = _uuid.v4();
+      changed = true;
+    }
+    ai.installId = installId;
+    return changed;
   }
 
   /// Re-reads permissions and screen time. Called on start and app resume.
@@ -189,7 +231,9 @@ class AppState extends ChangeNotifier {
       'chat': chat.map((e) => e.toJson()).toList(),
       'displayName': displayName,
       'provider': ai.provider.name,
-      'apiKey': ai.apiKey,
+      // B1: the key lives in secure storage; here only if that failed.
+      if (!_keyInSecureStorage && ai.apiKey.isNotEmpty) 'apiKey': ai.apiKey,
+      'install_id': installId,
       'model': ai.model,
       'weeklySummary': weeklySummary,
       'weeklySummaryAt': weeklySummaryAt == null ? null : toOffsetIso(weeklySummaryAt!),
@@ -385,7 +429,15 @@ class AppState extends ChangeNotifier {
   void updateSettings(
       {String? name, String? apiKey, String? model, LlmProvider? provider}) {
     if (name != null) displayName = name.trim();
-    if (apiKey != null) ai.apiKey = apiKey.trim();
+    if (apiKey != null && apiKey.trim() != ai.apiKey) {
+      ai.apiKey = apiKey.trim();
+      secrets.writeApiKey(ai.apiKey).then((ok) {
+        if (ok != _keyInSecureStorage) {
+          _keyInSecureStorage = ok;
+          _save();
+        }
+      });
+    }
     if (provider != null && provider != ai.provider) {
       ai.provider = provider;
       ai.model = provider.defaultModel;

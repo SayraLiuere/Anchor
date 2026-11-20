@@ -2,17 +2,41 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../config.dart' as config;
 import '../models/log_entry.dart';
 import 'features.dart';
 import 'risk_model.dart';
 
 enum LlmProvider {
-  openai('OpenAI', 'gpt-4.1-mini'),
-  gemini('Google Gemini', 'gemini-2.5-flash');
+  /// The Anchor proxy (B1): no key on the phone; the server picks the model.
+  proxy('Anchor AI', 'default'),
+
+  /// Developer options: the user's own key, stored in secure storage.
+  openai('OpenAI (dev)', 'gpt-4.1-mini'),
+  gemini('Gemini (dev)', 'gemini-2.5-flash');
 
   const LlmProvider(this.label, this.defaultModel);
   final String label;
   final String defaultModel;
+
+  bool get needsKey => this != proxy;
+}
+
+/// Provider after loading saved settings (B1). The proxy is the default; a
+/// saved OpenAI or Gemini choice is kept only if a key was actually set,
+/// since older versions saved "openai" even when no key was ever entered.
+LlmProvider providerAfterLoad(String? saved, {required bool hasKey}) {
+  final p = LlmProvider.values.asNameMap()[saved];
+  if (p == null || (p.needsKey && !hasKey)) return LlmProvider.proxy;
+  return p;
+}
+
+/// The proxy said this install has used its messages for today (HTTP 429).
+class DailyLimitReached implements Exception {
+  const DailyLimitReached(this.message);
+  final String message;
+  @override
+  String toString() => message;
 }
 
 /// Language-generation layer (thesis Section 4.7).
@@ -22,16 +46,35 @@ enum LlmProvider {
 /// structured, identifier-free context is sent. When no key is set or a call
 /// fails, template responses built from the same features are used (NFR5).
 class CompanionAI {
-  CompanionAI();
+  CompanionAI({http.Client? client, this.proxyUrl = config.proxyUrl})
+      : _http = client ?? http.Client();
 
-  LlmProvider provider = LlmProvider.openai;
+  final http.Client _http;
+
+  /// Base URL of the Anchor proxy; empty when it is not set up yet.
+  final String proxyUrl;
+
+  LlmProvider provider = LlmProvider.proxy;
   String apiKey = '';
-  String model = LlmProvider.openai.defaultModel;
+  String model = LlmProvider.proxy.defaultModel;
+
+  /// Random per-install ID sent to the proxy for its daily limit. Not linked
+  /// to the user's name or anything else.
+  String installId = '';
 
   /// Last API error, shown in Settings so problems are visible.
   String? lastError;
 
-  bool get online => apiKey.trim().isNotEmpty;
+  /// True after the proxy refused a call because today's limit was used.
+  bool limitReached = false;
+
+  bool get online => provider == LlmProvider.proxy
+      ? proxyUrl.isNotEmpty && installId.isNotEmpty
+      : apiKey.trim().isNotEmpty;
+
+  static const dailyLimitMessage =
+      "I've chatted so much today that my voice is all tired 😴 I'll be back "
+      "tomorrow! Your logs and screen time still work, and I'm still keeping you company.";
 
   static const _safety = '''
 Safety rules (always apply):
@@ -94,8 +137,9 @@ $_safety''';
       for (final m in turns) (m.fromUser ? 'user' : 'assistant', m.text),
       ('user', userText),
     ];
-    return await _generate(system, messages) ??
-        _fallbackReply(userText, features, risk);
+    final text = await _generate(system, messages);
+    if (text != null) return text;
+    return limitReached ? dailyLimitMessage : _fallbackReply(userText, features, risk);
   }
 
   Future<String> weeklySummary(BehaviourFeatures features, RiskResult risk) async {
@@ -117,22 +161,54 @@ $_safety''';
   }
 
   Future<String?> _generate(String system, List<(String, String)> messages) async {
+    limitReached = false;
     if (!online) return null;
     try {
       final res = switch (provider) {
+        LlmProvider.proxy => await _proxy(system, messages),
         LlmProvider.openai => await _openAi(system, messages),
         LlmProvider.gemini => await _gemini(system, messages),
       };
       lastError = null;
       return res;
+    } on DailyLimitReached catch (e) {
+      limitReached = true;
+      lastError = e.message;
+      return null;
     } catch (e) {
       lastError = e.toString().replaceFirst('Exception: ', '');
       return null;
     }
   }
 
+  /// OpenAI-format request to the Anchor proxy. No key: the install ID is
+  /// only used by the proxy for its daily limit.
+  Future<String> _proxy(String system, List<(String, String)> messages) async {
+    final res = await _http
+        .post(
+          Uri.parse('$proxyUrl/v1/chat/completions'),
+          headers: {'Content-Type': 'application/json', 'X-Install-Id': installId},
+          body: jsonEncode({
+            'model': model.isEmpty ? 'default' : model,
+            'messages': [
+              {'role': 'system', 'content': system},
+              for (final (role, text) in messages) {'role': role, 'content': text},
+            ],
+            'max_tokens': 1500,
+          }),
+        )
+        .timeout(const Duration(seconds: 30));
+    final data = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+    final err = data['error']?['message'];
+    if (res.statusCode == 429) throw DailyLimitReached('$err');
+    if (res.statusCode != 200) throw Exception('Anchor AI ${res.statusCode}: ${err ?? res.body}');
+    final text = data['choices']?[0]?['message']?['content'];
+    if (text is! String || text.trim().isEmpty) throw Exception('Empty reply from Anchor AI');
+    return text.trim();
+  }
+
   Future<String> _openAi(String system, List<(String, String)> messages) async {
-    final res = await http
+    final res = await _http
         .post(
           Uri.parse('https://api.openai.com/v1/chat/completions'),
           headers: {
@@ -160,7 +236,7 @@ $_safety''';
   }
 
   Future<String> _gemini(String system, List<(String, String)> messages) async {
-    final res = await http
+    final res = await _http
         .post(
           Uri.parse(
               'https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent'),

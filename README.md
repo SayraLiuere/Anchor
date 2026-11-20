@@ -43,5 +43,6 @@ The user grants it on the Settings page the app opens (Home → "Let Mira see yo
 Note: `PACKAGE_USAGE_STATS` is fine for sideloaded FYP builds. Publishing on Google Play would need a policy declaration.
 
 ## AI providers
-Settings → choose OpenAI (default model `gpt-4.1-mini`) or Gemini, paste a key, then tap **Test connection**. The model name is editable.
+By default Mira uses **Anchor AI**: the app talks to the proxy in `proxy/` (a Cloudflare Worker that forwards to OpenAI now, or OpenRouter later), so no API key is needed on the phone. Set the proxy address in `lib/config.dart` after deploying it (see `proxy/README.md`). Without it, or offline, Mira uses template replies.
+Developer option: Settings → OpenAI (dev) or Gemini (dev), paste your own key (kept in Android's secure storage, not in `second_brain.json`), then tap **Test connection**.
 Chat uses a playful pet-and-friend persona. Weekly recaps use a professional report persona (`lib/services/companion_ai.dart`).
