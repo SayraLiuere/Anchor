@@ -93,6 +93,13 @@ class MainActivity : FlutterActivity() {
                     )
                     result.success(null)
                 }
+                "appVersion" -> {
+                    // e.g. "1.0.0+1" (versionName+versionCode), for the export (E2).
+                    val info = packageManager.getPackageInfo(packageName, 0)
+                    val code = if (Build.VERSION.SDK_INT >= 28) info.longVersionCode
+                        else @Suppress("DEPRECATION") info.versionCode.toLong()
+                    result.success("${info.versionName}+$code")
+                }
                 "checkNow" -> {
                     // One immediate run of the same background check.
                     androidx.work.WorkManager.getInstance(this).enqueue(

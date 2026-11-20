@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../services/app_state.dart';
 import '../services/companion_ai.dart';
@@ -154,12 +155,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           ListTile(
             contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.ios_share),
+            title: const Text('Share my data (JSON file)'),
+            subtitle: Text('${state.usageDaily.length} days of screen time and '
+                '${state.logs.length} logs. No name, chat or key.'),
+            onTap: () async {
+              final messenger = ScaffoldMessenger.of(context);
+              try {
+                final f = await state.writeExportFile();
+                await Share.shareXFiles(
+                  [XFile(f.path, mimeType: 'application/json')],
+                  subject: 'Anchor data export',
+                );
+              } catch (e) {
+                messenger.showSnackBar(SnackBar(content: Text('Could not share: $e')));
+              }
+            },
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.copy_all),
-            title: const Text('Copy anonymised export (JSON)'),
-            subtitle: const Text('For your evaluation analysis. No name or key.'),
-            onTap: () {
-              Clipboard.setData(ClipboardData(text: state.exportJson()));
-              ScaffoldMessenger.of(context).showSnackBar(
+            title: const Text('Copy my data instead'),
+            subtitle: const Text('Same export, as text on the clipboard'),
+            onTap: () async {
+              final messenger = ScaffoldMessenger.of(context);
+              await Clipboard.setData(ClipboardData(text: await state.exportJson()));
+              messenger.showSnackBar(
                   const SnackBar(content: Text('Export copied to clipboard')));
             },
           ),

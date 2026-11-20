@@ -250,6 +250,9 @@ class ScreenTimeService {
 
   /// Runs the background check once right now instead of waiting ~15 min.
   Future<void> checkNow() => _call('checkNow');
+
+  /// Installed version, e.g. "1.0.0+1"; "unknown" off Android.
+  Future<String> appVersion() async => await _call<String>('appVersion') ?? 'unknown';
 }
 
 String formatMinutes(num minutes) {

@@ -8,6 +8,7 @@ import 'package:uuid/uuid.dart';
 
 import '../models/log_entry.dart';
 import 'companion_ai.dart';
+import 'export.dart';
 import 'features.dart';
 import 'risk_model.dart';
 import 'screen_time.dart';
@@ -413,11 +414,22 @@ class AppState extends ChangeNotifier {
     _changed();
   }
 
-  /// Anonymised export for analysis (thesis 3.8): no name, no API key.
-  String exportJson() => const JsonEncoder.withIndent('  ').convert({
-        'logs': logs.map((e) => e.toJson()).toList(),
-        if (features.screen != null) 'screen_time_7d': features.screen!.toPromptJson(),
-      });
+  /// Export v2 for analysis (E2, thesis 3.8): saved daily and hourly screen
+  /// time, logs and nudges. No name, chat or API key.
+  Future<String> exportJson() async => encodeExport(buildExport(
+        now: DateTime.now(),
+        appVersion: await screen.appVersion(),
+        daily: usageDaily,
+        hourly: usageHourly,
+        logs: logs,
+      ));
+
+  /// Writes the export to a temporary file for the share sheet.
+  Future<File> writeExportFile() async {
+    final dir = await getTemporaryDirectory();
+    final f = File('${dir.path}/${exportFileName(DateTime.now())}');
+    return f.writeAsString(await exportJson(), flush: true);
+  }
 
   /// Simulated records for prototyping/demos (thesis 3.4.6), flagged synthetic.
   void seedDemoData() {
