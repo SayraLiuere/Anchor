@@ -15,6 +15,7 @@ import 'memory.dart';
 import '../models/fact.dart';
 import '../models/context_note.dart';
 import 'features.dart';
+import 'risk_grid.dart';
 import 'risk_model.dart';
 import '../models/schedule_block.dart';
 import 'schedule_service.dart';
@@ -192,6 +193,7 @@ class AppState extends ChangeNotifier {
             ? await screen.daily(days: 7)
             : weekFromSnapshots(usageDaily, todayUsage, DateTime.now());
         await _refreshDrafts();
+        _pushHeadsUpPlan();
       } catch (e) {
         debugPrint('Usage read failed: $e');
       }
@@ -720,7 +722,25 @@ class AppState extends ChangeNotifier {
 
   void _scheduleChanged() {
     screen.pushSchedule(blocks);
+    _pushHeadsUpPlan();
     _changed();
+  }
+
+  // ---------- Time-risk grid (D1) ----------
+
+  /// Usually heavy weekday x hour slots; null before 14 saved days.
+  RiskGrid? riskGrid;
+
+  /// Recomputes the grid (on every refresh, so at least daily when the app
+  /// is opened) and gives the worker the next week's flagged slot starts
+  /// and quiet ranges. With no grid the plan is empty.
+  void _pushHeadsUpPlan() {
+    final now = DateTime.now();
+    riskGrid = RiskGrid.compute(usageDaily, usageHourly, now);
+    screen.pushHeadsUpPlan(headsUpPlanJson(
+      riskGrid == null ? const [] : upcomingSlotStarts(riskGrid!, now),
+      quietRanges(schedule, now),
+    ));
   }
 
   void updateNudges(void Function(NudgeSettings n) edit) {

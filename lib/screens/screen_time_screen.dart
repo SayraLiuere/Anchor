@@ -347,6 +347,16 @@ class _NudgeSettingsCard extends StatelessWidget {
             const Divider(height: 24),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
+              value: n.headsUp,
+              onChanged: (v) => s.updateNudges((n) => n.headsUp = v),
+              title: const Text('Heads-up before my usual scroll times'),
+              subtitle: Text(s.riskGrid == null
+                  ? 'Starts after 14 days of screen time: Mira learns which hours are usually heavy'
+                  : 'About 10-25 min before ${s.riskGrid!.flagged.length} usually heavy hour'
+                      '${s.riskGrid!.flagged.length == 1 ? '' : 's'} a week. Not during quiet blocks.'),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
               value: n.askAfterSession,
               onChanged: (v) => s.updateNudges((n) => n.askAfterSession = v),
               title: const Text('Ask me after a long session'),

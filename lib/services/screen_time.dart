@@ -117,6 +117,7 @@ class NudgeSettings {
     this.reminderHour = 21,
     this.askAfterSession = true,
     this.draftMinutes = 15,
+    this.headsUp = true,
   }) : limits = limits ?? {'social': 60, 'games': 60, 'video': 90, 'total': 300};
 
   bool warningsEnabled;
@@ -131,6 +132,9 @@ class NudgeSettings {
   /// Minimum length for a session to become a draft episode.
   int draftMinutes;
 
+  /// Heads-up 10-25 min before a usually heavy hour (D1).
+  bool headsUp;
+
   Map<String, dynamic> toJson() => {
         'warningsEnabled': warningsEnabled,
         'limits': limits,
@@ -139,6 +143,7 @@ class NudgeSettings {
         'reminderHour': reminderHour,
         'askAfterSession': askAfterSession,
         'draftMinutes': draftMinutes,
+        'headsUp': headsUp,
       };
 
   factory NudgeSettings.fromJson(Map<String, dynamic> j) => NudgeSettings(
@@ -150,6 +155,7 @@ class NudgeSettings {
         reminderHour: j['reminderHour'] as int? ?? 21,
         askAfterSession: j['askAfterSession'] as bool? ?? true,
         draftMinutes: j['draftMinutes'] as int? ?? 15,
+        headsUp: j['headsUp'] as bool? ?? true,
       );
 }
 
@@ -260,6 +266,10 @@ class ScreenTimeService {
   /// null lifts the pause.
   Future<void> pauseLimitWarningsUntil(DateTime? until) =>
       _call('pauseLimitWarnings', {'until': until?.millisecondsSinceEpoch ?? 0});
+
+  /// Upcoming risky slot starts and quiet ranges for the worker (D1).
+  Future<void> pushHeadsUpPlan(Map<String, dynamic> plan) =>
+      _call('setHeadsUpPlan', {'json': jsonEncode(plan)});
 
   Future<void> markLogged(DateTime day) =>
       _call('markLogged', {'day': DateFormat('yyyy-MM-dd').format(day)});

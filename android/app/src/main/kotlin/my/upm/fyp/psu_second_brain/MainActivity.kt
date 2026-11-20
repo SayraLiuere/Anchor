@@ -85,6 +85,12 @@ class MainActivity : FlutterActivity() {
                         .putString("schedule", call.argument<String>("json") ?: "[]").apply()
                     result.success(null)
                 }
+                "setHeadsUpPlan" -> {
+                    // D1: flagged slot starts and quiet ranges, epoch ms.
+                    MiraConfig.prefs(this).edit()
+                        .putString("headsUpPlan", call.argument<String>("json") ?: "{}").apply()
+                    result.success(null)
+                }
                 "pauseLimitWarnings" -> {
                     // C3 gentle evening: 0 lifts the pause.
                     val until = call.argument<Number>("until")?.toLong() ?: 0L

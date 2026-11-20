@@ -105,6 +105,8 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       final action = s.takePendingAction();
       if (action == null || !mounted) return;
       select(0);
+      // D1 heads-up: just open the app on Home.
+      if (action == 'open') return;
       if (action == 'checkin') {
         openLogSheet(context, EntryKind.checkIn);
         return;

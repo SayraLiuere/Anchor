@@ -35,8 +35,10 @@ class MiraConfig(json: JSONObject) {
     val petName = json.optString("petName", "Mira")
     val askAfterSession = json.optBoolean("askAfterSession", true)
     val draftMinutes = json.optInt("draftMinutes", 15)
+    /** Heads-up before a usually heavy hour (D1). */
+    val headsUp = json.optBoolean("headsUp", true)
 
-    val anyEnabled get() = warnings || logReminder
+    val anyEnabled get() = warnings || logReminder || headsUp
 
     companion object {
         private const val PREFS = "mira_native"
@@ -159,6 +161,8 @@ class MiraWorker(ctx: Context, params: WorkerParameters) : Worker(ctx, params) {
             }
         }
 
+        headsUp(cfg, prefs, now)
+
         if (cfg.logReminder) {
             val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
             val loggedToday = prefs.getString("lastLogDay", "") == today
@@ -177,10 +181,55 @@ class MiraWorker(ctx: Context, params: WorkerParameters) : Worker(ctx, params) {
         return Result.success()
     }
 
+    /**
+     * D1 pre-emptive nudge. The app sends the next week's flagged slot starts and
+     * quiet ranges (lib/services/risk_grid.dart); this applies the same rule as
+     * headsUpDue there: a slot starts in 10-25 min, not in a quiet block, no nudge
+     * in the last hour, heads-ups on. Once per slot.
+     */
+    private fun headsUp(cfg: MiraConfig, prefs: android.content.SharedPreferences, now: Long) {
+        if (!cfg.headsUp) return
+        val plan = try {
+            JSONObject(prefs.getString("headsUpPlan", "{}") ?: "{}")
+        } catch (e: Exception) {
+            return
+        }
+        val slots = plan.optJSONArray("slots") ?: return
+        val quiet = plan.optJSONArray("quiet")
+        var due = -1L
+        for (i in 0 until slots.length()) {
+            val t = slots.getLong(i)
+            if (t - now in 10 * 60_000L..25 * 60_000L) { due = t; break }
+        }
+        if (due < 0 || prefs.getBoolean("headsup_$due", false)) return
+        if (quiet != null) {
+            for (i in 0 until quiet.length()) {
+                val q = quiet.getJSONArray(i)
+                if (now >= q.getLong(0) && now < q.getLong(1)) return
+            }
+        }
+        if (now - prefs.getLong("lastNudgeAt", 0L) < 60 * 60_000L) return
+        prefs.edit().putBoolean("headsup_$due", true).apply()
+        val at = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(due))
+        notify(
+            id = 500,
+            channel = CH_NUDGE,
+            title = "Heads-up from ${cfg.petName}",
+            text = "Around $at is usually a heavy phone time for you. Want to plan something " +
+                "else before it starts? 🐾",
+            action = "open",
+        )
+    }
+
     private fun fmt(min: Long) = if (min >= 60) "${min / 60}h ${min % 60}m" else "${min}m"
 
-    private fun notify(id: Int, channel: String, title: String, text: String, action: String) =
+    private fun notify(id: Int, channel: String, title: String, text: String, action: String) {
+        // Every nudge counts for D1's "no nudge in the last hour".
+        if (channel == CH_NUDGE) {
+            MiraConfig.prefs(ctx).edit().putLong("lastNudgeAt", System.currentTimeMillis()).apply()
+        }
         postNotification(ctx, id, channel, title, text, action)
+    }
 }
 
 fun postNotification(ctx: Context, id: Int, channel: String, title: String, text: String, action: String) {
