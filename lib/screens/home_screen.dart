@@ -130,7 +130,12 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
           ScreenTimeCard(state: s),
           const SizedBox(height: 14),
-          RiskCard(risk: s.risk),
+          RiskCard(
+            risk: s.risk,
+            hint: s.forestAvailable && s.features.screen == null
+                ? 'Turn on screen time to use the Random Forest'
+                : null,
+          ),
           const SectionTitle('Quick actions'),
           Row(children: [
             Expanded(
@@ -349,9 +354,12 @@ class _ActionButton extends StatelessWidget {
 
 /// Risk indicator with gauge + top contributing factors (FR4, FR7).
 class RiskCard extends StatelessWidget {
-  const RiskCard({super.key, required this.risk});
+  const RiskCard({super.key, required this.risk, this.hint});
 
   final RiskResult risk;
+
+  /// Why a simpler model is active, e.g. screen time is off.
+  final String? hint;
 
   @override
   Widget build(BuildContext context) {
@@ -412,9 +420,13 @@ class RiskCard extends StatelessWidget {
                         ),
                       )),
                   const SizedBox(height: 4),
-                  Text(risk.modelName,
+                  Text('Model: ${risk.modelName}',
                       style: t.textTheme.labelSmall
                           ?.copyWith(color: t.colorScheme.outline)),
+                  if (hint != null)
+                    Text(hint!,
+                        style: t.textTheme.labelSmall
+                            ?.copyWith(color: t.colorScheme.outline)),
                 ],
               ),
             ),

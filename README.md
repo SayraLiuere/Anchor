@@ -7,7 +7,7 @@ Flutter Android app for *AI-Based Health-Oriented Second Brain for Predictive In
 |---|---|
 | FR1–FR3 logging, Table 4.3 schema | `lib/models/log_entry.dart`, `lib/screens/log_screen.dart` |
 | Feature mapping (Table 3.1) | `lib/services/features.dart` |
-| FR4 risk (heuristic MVP → Random Forest) | `lib/services/risk_model.dart`, `ml/train_model.py` |
+| FR4 risk (thesis 4.2.4, Table 4.9): Random Forest with screen time on, heuristic otherwise | `lib/services/risk_model.dart`, `ml/train_model.py`, `assets/model/rf_model.json` |
 | FR5 LLM companion + weekly summary, offline fallback | `lib/services/companion_ai.dart` |
 | FR6 dashboards / memory timeline | `lib/screens/insights_screen.dart`, `lib/screens/memory_screen.dart` |
 | FR7 companion UI | `lib/screens/home_screen.dart`, `lib/screens/companion_screen.dart` |

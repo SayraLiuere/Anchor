@@ -22,7 +22,14 @@ class AppState extends ChangeNotifier {
   final ai = CompanionAI();
   final screen = ScreenTimeService();
 
-  RiskModel riskModel = HeuristicRiskModel();
+  RiskEngine riskEngine = RiskEngine();
+
+  /// Version of second_brain.json. Old files have no field and load with
+  /// defaults; keys are only ever added, never renamed or removed.
+  static const schemaVersion = 1;
+
+  /// True when the bundled Random Forest loaded (used with screen time on).
+  bool get forestAvailable => riskEngine.forest != null;
   List<LogEntry> logs = [];
   List<ChatMessage> chat = [];
   String displayName = '';
@@ -48,7 +55,7 @@ class AppState extends ChangeNotifier {
   File? _file;
 
   Future<void> init() async {
-    riskModel = await RiskModel.load();
+    riskEngine = await RiskEngine.load();
     try {
       final dir = await getApplicationDocumentsDirectory();
       _file = File('${dir.path}/second_brain.json');
@@ -115,7 +122,7 @@ class AppState extends ChangeNotifier {
     logs.sort((a, b) => b.timestamp.compareTo(a.timestamp));
     features = BehaviourFeatures.fromLogs(logs,
         screen: usageGranted ? ScreenTimeFeatures.fromDaily(weekUsage) : null);
-    risk = riskModel.predict(features);
+    risk = riskEngine.predict(features);
   }
 
   Future<void> _saving = Future.value();
@@ -137,6 +144,7 @@ class AppState extends ChangeNotifier {
       'model': ai.model,
       'weeklySummary': weeklySummary,
       'weeklySummaryAt': weeklySummaryAt?.toIso8601String(),
+      'schema_version': schemaVersion,
       'onboarded': onboarded,
       'nudges': nudges.toJson(),
       'dismissedDrafts': dismissedDrafts.toList(),

@@ -50,7 +50,7 @@ def load(path):
     # Ordinal-encode text columns (e.g. stress_level = Low/Medium/High).
     order = {"low": 0, "medium": 1, "moderate": 1, "high": 2, "no": 0, "yes": 1}
     for col in features + [TARGET]:
-        if df[col].dtype == object:
+        if not pd.api.types.is_numeric_dtype(df[col]):
             df[col] = df[col].str.strip().str.lower().map(order)
             if df[col].isna().any():
                 raise ValueError(f"Unrecognised categories in {col}; extend `order`.")

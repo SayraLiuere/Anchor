@@ -27,19 +27,35 @@ class RiskResult {
   final String modelName;
 }
 
-/// Swappable risk component (thesis Section 4.6). The app starts with the
-/// heuristic engine and switches to the trained forest if
-/// `assets/model/rf_model.json` is present.
+/// Swappable risk component (thesis 4.2.4, Table 4.9).
 abstract class RiskModel {
   String get name;
   RiskResult predict(BehaviourFeatures f);
+}
 
-  static Future<RiskModel> load() async {
+/// Chooses the model per prediction (thesis 4.2.4, 5.4.2). The Random Forest
+/// is used only when measured screen time exists: its strongest features are
+/// screen and social-media hours, and log-only proxies are too weak for it.
+/// Otherwise, or if `assets/model/rf_model.json` is missing, the heuristic runs.
+class RiskEngine {
+  RiskEngine({this.forest, HeuristicRiskModel? heuristic})
+      : heuristic = heuristic ?? HeuristicRiskModel();
+
+  final ForestRiskModel? forest;
+  final HeuristicRiskModel heuristic;
+
+  RiskModel modelFor(BehaviourFeatures f) =>
+      f.screen != null && forest != null ? forest! : heuristic;
+
+  RiskResult predict(BehaviourFeatures f) => modelFor(f).predict(f);
+
+  static Future<RiskEngine> load() async {
     try {
       final raw = await rootBundle.loadString('assets/model/rf_model.json');
-      return ForestRiskModel.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+      return RiskEngine(
+          forest: ForestRiskModel.fromJson(jsonDecode(raw) as Map<String, dynamic>));
     } catch (_) {
-      return HeuristicRiskModel();
+      return RiskEngine();
     }
   }
 }
@@ -109,7 +125,7 @@ List<String> _topReasons(Map<String, double> weighted, BehaviourFeatures f,
 RiskLevel _bucket(double s, double medium, double high) =>
     s >= high ? RiskLevel.high : (s >= medium ? RiskLevel.medium : RiskLevel.low);
 
-/// MVP heuristic engine (thesis 4.6: stress, craving, triggers), extended
+/// MVP heuristic engine (thesis 4.2.4: stress, craving, triggers), extended
 /// with measured screen time when the user opts in.
 class HeuristicRiskModel implements RiskModel {
   static const logWeights = {

@@ -150,7 +150,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.analytics_outlined),
             title: Text('${state.logs.length} entries stored on this phone'),
-            subtitle: Text('Risk model: ${state.riskModel.name}'),
+            subtitle: Text('Risk model: ${state.risk.modelName}'),
           ),
           ListTile(
             contentPadding: EdgeInsets.zero,
