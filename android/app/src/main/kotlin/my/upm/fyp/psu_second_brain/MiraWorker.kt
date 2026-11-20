@@ -89,7 +89,7 @@ class MiraWorker(ctx: Context, params: WorkerParameters) : Worker(ctx, params) {
             )
             for ((group, limit) in cfg.limits) {
                 if (limit <= 0) continue
-                val minutes = (if (group == "total") r.totalMs else r.groupMs(group)) / 60000
+                val minutes = (if (group == "total") r.screenMs else r.groupMs(group)) / 60000
                 // Warn when the limit is crossed, and once more at double the limit.
                 val level = when {
                     minutes >= limit * 2 -> 2

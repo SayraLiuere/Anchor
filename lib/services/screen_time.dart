@@ -23,6 +23,7 @@ class UsageSummary {
         videoMinutes = (m['videoMinutes'] as num).toDouble(),
         gamesMinutes = (m['gamesMinutes'] as num).toDouble(),
         chatMinutes = (m['chatMinutes'] as num).toDouble(),
+        audioMinutes = (m['audioMinutes'] as num?)?.toDouble() ?? 0,
         unlocks = m['unlocks'] as int,
         opens = m['opens'] as int,
         lateNightMinutes = (m['lateNightMinutes'] as num).toDouble(),
@@ -42,6 +43,12 @@ class UsageSummary {
             .toList();
 
   final double totalMinutes, socialMinutes, videoMinutes, gamesMinutes, chatMinutes;
+
+  /// Music and podcasts (A5). Part of [totalMinutes], but not screen time.
+  final double audioMinutes;
+
+  /// Screen time used for risk and the total limit: everything but audio.
+  double get screenMinutes => totalMinutes - audioMinutes;
   final int unlocks, opens;
   final double lateNightMinutes, longestSessionMinutes;
   final String? longestSessionApp;

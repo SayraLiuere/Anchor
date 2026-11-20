@@ -23,6 +23,9 @@ object UsageReader {
     const val VIDEO = "video"
     const val GAMES = "games"
     const val CHAT = "chat"
+
+    /** Music and podcasts (A5): shown, but not counted as screen time for risk or limits. */
+    const val AUDIO = "audio"
     const val OTHER = "other"
 
     private val knownGroups = mapOf(
@@ -44,6 +47,15 @@ object UsageReader {
         "org.telegram.messenger" to CHAT, "com.discord" to CHAT,
         "com.facebook.orca" to CHAT, "jp.naver.line.android" to CHAT,
         "com.google.android.apps.messaging" to CHAT, "com.tencent.mm" to CHAT,
+        // Music and podcasts (YouTube itself stays video)
+        "com.spotify.music" to AUDIO, "com.google.android.apps.youtube.music" to AUDIO,
+        "com.apple.android.music" to AUDIO, "com.soundcloud.android" to AUDIO,
+        "com.amazon.mp3" to AUDIO, "deezer.android.app" to AUDIO,
+        "com.aspiro.tidal" to AUDIO, "com.joox.joox" to AUDIO,
+        "com.shazam.android" to AUDIO, "com.pandora.android" to AUDIO,
+        "com.google.android.apps.podcasts" to AUDIO, "au.com.shiftyjelly.pocketcasts" to AUDIO,
+        "fm.castbox.audiobook.radio.podcast" to AUDIO, "com.bambuna.podcastaddict" to AUDIO,
+        "com.audible.application" to AUDIO, "com.anghami" to AUDIO,
     )
 
     fun hasPermission(ctx: Context): Boolean {
@@ -78,6 +90,8 @@ object UsageReader {
     ) {
         fun groupMs(group: String) = apps.values.filter { it.group == group }.sumOf { it.ms }
         val totalMs get() = apps.values.sumOf { it.ms }
+        /** Screen time for risk and the total limit: everything except audio (A5). */
+        val screenMs get() = totalMs - groupMs(AUDIO)
     }
 
 
@@ -124,6 +138,7 @@ object UsageReader {
                 ApplicationInfo.CATEGORY_GAME -> GAMES
                 ApplicationInfo.CATEGORY_SOCIAL -> SOCIAL
                 ApplicationInfo.CATEGORY_VIDEO -> VIDEO
+                ApplicationInfo.CATEGORY_AUDIO -> AUDIO
                 else -> if (Build.VERSION.SDK_INT < 26 &&
                     (info.flags and ApplicationInfo.FLAG_IS_GAME) != 0) GAMES else OTHER
             }
@@ -245,7 +260,9 @@ object UsageReader {
             apps = apps,
             unlocks = unlocks,
             unlockTimes = unlockTimes,
-            lateNightMs = sessions.sumOf { lateNightOverlap(maxOf(it.start, start), it.end) },
+            // Audio is not screen use (A5), so it never counts as late-night use.
+            lateNightMs = sessions.filter { describe(ctx, it.pkg).second != AUDIO }
+                .sumOf { lateNightOverlap(maxOf(it.start, start), it.end) },
             longest = sessions.maxByOrNull { clipped(it) }?.let { Session(it.pkg, maxOf(it.start, start), it.end) },
             ongoing = ongoing,
             sessions = sessions,
@@ -295,6 +312,7 @@ object UsageReader {
         "videoMinutes" to r.groupMs(VIDEO) / 60000.0,
         "gamesMinutes" to r.groupMs(GAMES) / 60000.0,
         "chatMinutes" to r.groupMs(CHAT) / 60000.0,
+        "audioMinutes" to r.groupMs(AUDIO) / 60000.0,
         "unlocks" to r.unlocks,
         "opens" to r.apps.values.sumOf { it.opens },
         "lateNightMinutes" to r.lateNightMs / 60000.0,

@@ -10,8 +10,16 @@ import 'screen_time.dart';
 /// stored history feeds the risk features now and the baseline (C2) and
 /// time-risk grid (D1) later.
 
-/// App groups stored per day and hour. `audio` stays 0 until A5.
+/// App groups stored per day and hour. `audio` (A5) is music and podcasts:
+/// stored and shown, but not screen time for risk, limits or late night.
 const snapshotGroups = ['social', 'video', 'games', 'audio', 'chat', 'other'];
+
+/// How usage was counted when a day row was saved, stored as
+/// `counting_version` so analysis can tell rows apart:
+///   (none) saved before A5, by the A2 or the A4 counting (unknown which);
+///   3      A4's lock, shutdown and midnight fixes plus the audio group (A5).
+/// Bump it whenever UsageReader's counting or grouping changes.
+const countingVersion = 3;
 
 /// Hours counted as late night: 23:00–05:00 (same as `LogEntry.isLateNight`).
 bool isLateNightHour(int h) => h >= 23 || h < 5;
@@ -45,7 +53,11 @@ class DaySnapshot {
     required this.opens,
     required this.lateNightMinutes,
     this.dayStart,
+    this.countingVersion,
   });
+
+  /// See [countingVersion]; null for rows saved before A5.
+  final int? countingVersion;
 
   /// Local midnight with its offset when the day was saved (A3), e.g.
   /// `2026-11-19T00:00:00+08:00`. Kept as written; rows saved before A3
@@ -75,6 +87,7 @@ class DaySnapshot {
         'late_night_min': _r2(lateNightMinutes),
         'opens': opens,
         if (dayStart != null) 'day_start': dayStart,
+        if (countingVersion != null) 'counting_version': countingVersion,
       };
 
   /// Missing fields default to 0, so rows from older versions still load.
@@ -85,6 +98,7 @@ class DaySnapshot {
         opens: (j['opens'] as num?)?.toInt() ?? 0,
         lateNightMinutes: _num(j['late_night_min']),
         dayStart: j['day_start'] as String?,
+        countingVersion: (j['counting_version'] as num?)?.toInt(),
       );
 
   /// Same shape as a live day read, so features and charts treat both alike.
@@ -94,6 +108,7 @@ class DaySnapshot {
         'videoMinutes': group('video'),
         'gamesMinutes': group('games'),
         'chatMinutes': group('chat'),
+        'audioMinutes': group('audio'),
         'unlocks': unlocks,
         'opens': opens,
         'lateNightMinutes': lateNightMinutes,
@@ -173,7 +188,7 @@ class HourUsage {
       for (final e in perHour[h]!.entries) {
         if (e.value <= 0) continue;
         minutes[e.key] = minutes[e.key]! + e.value;
-        if (isLateNightHour(h)) late += e.value;
+        if (isLateNightHour(h) && e.key != 'audio') late += e.value;
         hours.add(HourUsage(date, h, e.key, e.value));
       }
     }
@@ -184,6 +199,7 @@ class HourUsage {
       opens: opens[date] ?? 0,
       lateNightMinutes: late,
       dayStart: toOffsetIso(DateTime.parse(date)),
+      countingVersion: countingVersion,
     ));
   }
   return (days: days, hours: hours);

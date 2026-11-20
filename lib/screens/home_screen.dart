@@ -263,6 +263,8 @@ class ScreenTimeCard extends StatelessWidget {
       ('Social media', u.socialMinutes, limits['social'] ?? 0, Icons.people_alt_outlined),
       ('Videos', u.videoMinutes, limits['video'] ?? 0, Icons.smart_display_outlined),
       ('Games', u.gamesMinutes, limits['games'] ?? 0, Icons.sports_esports_outlined),
+      // Music and podcasts: shown, no limit, not counted for risk (A5).
+      if (u.audioMinutes >= 1) ('Audio', u.audioMinutes, 0, Icons.headphones_outlined),
     ];
     return Card(
       child: InkWell(

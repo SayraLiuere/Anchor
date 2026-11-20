@@ -133,6 +133,7 @@ IconData groupIcon(String g) => switch (g) {
       'video' => Icons.smart_display_outlined,
       'games' => Icons.sports_esports_outlined,
       'chat' => Icons.chat_outlined,
+      'audio' => Icons.headphones_outlined,
       _ => Icons.apps,
     };
 
@@ -141,5 +142,6 @@ String groupLabel(String g) => switch (g) {
       'video' => 'Video',
       'games' => 'Game',
       'chat' => 'Messaging',
+      'audio' => 'Music & podcasts',
       _ => 'Other',
     };

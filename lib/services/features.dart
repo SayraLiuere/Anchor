@@ -48,22 +48,25 @@ class ScreenTimeFeatures {
 
   /// [days] is the 7-day window: stored snapshot rows for complete days (A2,
   /// `weekFromSnapshots`) plus today's live read, oldest first.
+  ///
+  /// Screen time here leaves out music and podcasts (A5); late-night minutes
+  /// already exclude them, so the ratio compares like with like.
   static ScreenTimeFeatures? fromDaily(List<UsageSummary> days) {
     if (days.isEmpty) return null;
     double avg(double Function(UsageSummary) f) =>
         days.map(f).reduce((a, b) => a + b) / days.length;
-    final total = days.fold(0.0, (a, d) => a + d.totalMinutes);
+    final total = days.fold(0.0, (a, d) => a + d.screenMinutes);
     final late = days.fold(0.0, (a, d) => a + d.lateNightMinutes);
     return ScreenTimeFeatures(
       days: days.length,
-      screenHours: avg((d) => d.totalMinutes) / 60,
+      screenHours: avg((d) => d.screenMinutes) / 60,
       socialHours: avg((d) => d.socialMinutes) / 60,
       gamingHours: avg((d) => d.gamesMinutes) / 60,
       videoHours: avg((d) => d.videoMinutes) / 60,
       appOpens: avg((d) => d.opens.toDouble()),
       unlocks: avg((d) => d.unlocks.toDouble()),
       lateNightRatio: total == 0 ? 0 : late / total,
-      dailyScreenHours: days.map((d) => d.totalMinutes / 60).toList(),
+      dailyScreenHours: days.map((d) => d.screenMinutes / 60).toList(),
     );
   }
 
