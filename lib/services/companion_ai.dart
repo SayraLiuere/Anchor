@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 
 import '../config.dart' as config;
 import '../models/log_entry.dart';
+import 'chat_context.dart';
 import 'features.dart';
 import 'risk_model.dart';
 
@@ -89,7 +90,8 @@ You help a university student notice and gently reduce problematic smartphone us
 Voice: casual, warm, playful, like texting a close friend. Short sentences. One or two emojis at most.
 You can mention your own little pet feelings ("I missed you!", "my ears perked up").
 Never lecture or guilt-trip. Celebrate small wins.
-Shape of a reply: react to how they feel, maybe one gentle observation from their data,
+Shape of a reply: react to how they feel, maybe one gentle observation from their data
+(quote one real number from the context when it fits, e.g. today's minutes),
 at most one tiny suggestion, then one light question. Max 60 words.
 $_safety''';
 
@@ -122,21 +124,44 @@ $_safety''';
         'last_7_days': f.toPromptJson(),
       };
 
+  /// Exactly what is sent for a chat reply: the system prompt with the
+  /// structured [context], the last 8 turns and the new message, all passed
+  /// through [scrubber] (B2). Public so tests can check what leaves the phone.
+  static (String, List<(String, String)>) chatPrompt({
+    required String userText,
+    required Map<String, dynamic> context,
+    required List<ChatMessage> history,
+    PromptScrubber? scrubber,
+  }) {
+    final s = scrubber ?? PromptScrubber();
+    final turns = history.length > 8 ? history.sublist(history.length - 8) : history;
+    final system = '$chatPersona\n\nStructured context (the user\'s own data; numbers and '
+        'categories only):\n${jsonEncode(context)}';
+    return (
+      system,
+      [
+        for (final m in turns) (m.fromUser ? 'user' : 'assistant', s.scrub(m.text)),
+        ('user', s.scrub(userText)),
+      ],
+    );
+  }
+
   Future<String> reply({
     required String userText,
     required BehaviourFeatures features,
     required RiskResult risk,
     required List<ChatMessage> history,
+    Map<String, dynamic>? context,
+    PromptScrubber? scrubber,
   }) async {
+    // Checked on the user's own words, before anything is scrubbed or sent.
     if (isCrisis(userText)) return crisisMessage;
-    final turns =
-        history.length > 8 ? history.sublist(history.length - 8) : history;
-    final system =
-        '$chatPersona\n\nStructured context from the user\'s own logs:\n${jsonEncode(_context(features, risk))}';
-    final messages = [
-      for (final m in turns) (m.fromUser ? 'user' : 'assistant', m.text),
-      ('user', userText),
-    ];
+    final (system, messages) = chatPrompt(
+      userText: userText,
+      context: context ?? _context(features, risk),
+      history: history,
+      scrubber: scrubber,
+    );
     final text = await _generate(system, messages);
     if (text != null) return text;
     return limitReached ? dailyLimitMessage : _fallbackReply(userText, features, risk);

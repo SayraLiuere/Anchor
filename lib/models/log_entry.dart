@@ -38,6 +38,7 @@ class LogEntry {
     this.synthetic = false,
     this.appPackage,
     this.appLabel,
+    this.appGroup,
     this.draftId,
   });
 
@@ -64,6 +65,10 @@ class LogEntry {
   /// Set when the episode came from an auto-detected session (draft).
   final String? appPackage;
   final String? appLabel;
+
+  /// App group of a drafted episode (social, video, games, ...), so the AI
+  /// can be told "a video app" instead of the app's name (B2).
+  final String? appGroup;
   final String? draftId;
 
   bool get autoDetected => draftId != null;
@@ -84,6 +89,7 @@ class LogEntry {
         'synthetic': synthetic,
         if (appPackage != null) 'app_package': appPackage,
         if (appLabel != null) 'app_label': appLabel,
+        if (appGroup != null) 'app_group': appGroup,
         if (draftId != null) 'draft_id': draftId,
       };
 
@@ -103,6 +109,7 @@ class LogEntry {
         synthetic: j['synthetic'] as bool? ?? false,
         appPackage: j['app_package'] as String?,
         appLabel: j['app_label'] as String?,
+        appGroup: j['app_group'] as String?,
         draftId: j['draft_id'] as String?,
       );
 }

@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models/log_entry.dart';
+import 'chat_context.dart';
 import 'companion_ai.dart';
 import 'export.dart';
 import 'features.dart';
@@ -315,6 +316,7 @@ class AppState extends ChangeNotifier {
       note: note,
       appPackage: draft?.package,
       appLabel: draft?.label,
+      appGroup: draft?.group,
       draftId: draft?.id,
     );
     logs.add(entry);
@@ -385,6 +387,14 @@ class AppState extends ChangeNotifier {
       features: features,
       risk: risk,
       history: chat.sublist(0, chat.length - 1),
+      context: buildChatContext(
+        now: DateTime.now(),
+        features: features,
+        risk: risk,
+        logs: logs,
+        today: usageGranted ? todayUsage : null,
+      ),
+      scrubber: promptScrubber,
     );
     chat.add(ChatMessage(fromUser: false, text: answer));
     companionTyping = false;
@@ -392,12 +402,25 @@ class AppState extends ChangeNotifier {
     _save();
   }
 
+  /// Every app name and the display name Mira's AI must not see (B2):
+  /// apps used today, apps of drafted sessions and logged episodes.
+  PromptScrubber get promptScrubber => PromptScrubber(
+        displayName: displayName,
+        appGroups: {
+          for (final l in logs)
+            if (l.appLabel != null) l.appLabel!: l.appGroup,
+          for (final d in _sessions) d.label: d.group,
+          for (final a in todayUsage?.apps ?? const <AppUsageInfo>[]) a.label: a.group,
+        },
+      );
+
   /// Short companion acknowledgement after a log is saved (thesis 4.7).
+  /// Says the app's group, not its name, and never includes the note (B2).
   Future<void> reactToLog(LogEntry e) async {
     final desc = StringBuffer(e.kind != EntryKind.episode
         ? 'Quick check-in'
-        : e.appLabel != null
-            ? 'You noticed I spent ${e.durationMinutes} min on ${e.appLabel}'
+        : e.autoDetected
+            ? 'You noticed I spent ${e.durationMinutes} min on ${groupPhrase(e.appGroup)}'
             : 'I just logged a phone episode');
     if (e.triggers.isNotEmpty) {
       desc.write(' (${e.triggers.map((t) => t.label.toLowerCase()).join(', ')})');
@@ -406,7 +429,6 @@ class AppState extends ChangeNotifier {
       desc.write(e.resisted ? ' and I managed to resist.' : ', about ${e.durationMinutes} min.');
     }
     desc.write(' Mood ${e.mood}/5, stress ${e.stress}/5, urge ${e.craving}/5.');
-    if (e.note.isNotEmpty) desc.write(' Note: ${e.note}');
     await sendToCompanion(desc.toString());
   }
 
