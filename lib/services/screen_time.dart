@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
+import 'usage_snapshots.dart';
+
 /// One app's foreground time in a period.
 class AppUsageInfo {
   AppUsageInfo(this.package, this.label, this.group, this.minutes, this.opens);
@@ -178,11 +180,31 @@ class ScreenTimeService {
 
   Future<UsageSummary?> today() async {
     final now = DateTime.now();
+    final start = DateTime(now.year, now.month, now.day).millisecondsSinceEpoch;
     final m = await _call<Map>('getUsage', {
-      'start': DateTime(now.year, now.month, now.day).millisecondsSinceEpoch,
+      'start': start,
       'end': now.millisecondsSinceEpoch,
     });
-    return m == null ? null : UsageSummary.fromMap(m);
+    return m == null ? null : UsageSummary.fromMap({...m, 'dayStart': start});
+  }
+
+  /// Raw sessions (group and times only) and unlock times between [start] and
+  /// [end], for daily and hourly snapshots. Null when unavailable.
+  Future<({List<RawSession> sessions, List<DateTime> unlocks})?> sessions(
+      DateTime start, DateTime end) async {
+    final m = await _call<Map>('getSessions', {
+      'start': start.millisecondsSinceEpoch,
+      'end': end.millisecondsSinceEpoch,
+    });
+    if (m == null) return null;
+    return (
+      sessions: (m['sessions'] as List)
+          .map((s) => RawSession.fromMap(s as Map))
+          .toList(),
+      unlocks: (m['unlocks'] as List)
+          .map((t) => DateTime.fromMillisecondsSinceEpoch(t as int))
+          .toList(),
+    );
   }
 
   /// Long social/video/game sessions between [start] and [end].

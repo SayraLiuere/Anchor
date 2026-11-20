@@ -68,6 +68,8 @@ object UsageReader {
     class Result(
         val apps: Map<String, AppUsage>,
         val unlocks: Int,
+        /** When each unlock happened (for per-day snapshots). */
+        val unlockTimes: List<Long>,
         val lateNightMs: Long,
         val longest: Session?,
         /** Session still in the foreground at `end`, if any. */
@@ -149,6 +151,7 @@ object UsageReader {
         val apps = HashMap<String, AppUsage>()
         val sessions = ArrayList<Session>()
         var unlocks = 0
+        val unlockTimes = ArrayList<Long>()
 
         var current: String? = null
         var currentStart = 0L
@@ -186,7 +189,7 @@ object UsageReader {
                 }
                 UsageEvents.Event.ACTIVITY_PAUSED -> if (e.packageName == current) pausedAt = t
                 UsageEvents.Event.SCREEN_NON_INTERACTIVE -> close(if (pausedAt >= 0) pausedAt else t)
-                UsageEvents.Event.KEYGUARD_HIDDEN -> unlocks++
+                UsageEvents.Event.KEYGUARD_HIDDEN -> { unlocks++; unlockTimes.add(t) }
             }
             // A pause that isn't followed by a resume of the same app within 3 s ends the session.
             if (pausedAt >= 0 && t - pausedAt > 3000) close(pausedAt)
@@ -205,6 +208,7 @@ object UsageReader {
         return Result(
             apps = apps,
             unlocks = unlocks,
+            unlockTimes = unlockTimes,
             lateNightMs = sessions.sumOf { lateNightOverlap(it.start, it.end) },
             longest = sessions.maxByOrNull { it.end - it.start },
             ongoing = ongoing,
@@ -233,6 +237,17 @@ object UsageReader {
         set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
         add(Calendar.DAY_OF_YEAR, -daysAgo)
     }.timeInMillis
+
+    /**
+     * Raw sessions for daily and hourly snapshots (A2): group and times only,
+     * no package or label. Dart splits them at hour and midnight boundaries.
+     */
+    fun sessionsMap(ctx: Context, r: Result): Map<String, Any?> = mapOf(
+        "sessions" to r.sessions.map {
+            mapOf("group" to describe(ctx, it.pkg).second, "start" to it.start, "end" to it.end)
+        },
+        "unlocks" to r.unlockTimes,
+    )
 
     fun toMap(r: Result): Map<String, Any?> = mapOf(
         "apps" to r.apps.values.filter { it.ms > 0 }.sortedByDescending { it.ms }.map {

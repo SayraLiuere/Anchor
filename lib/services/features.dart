@@ -46,6 +46,8 @@ class ScreenTimeFeatures {
         'app_opens_per_day': appOpens,
       };
 
+  /// [days] is the 7-day window: stored snapshot rows for complete days (A2,
+  /// `weekFromSnapshots`) plus today's live read, oldest first.
   static ScreenTimeFeatures? fromDaily(List<UsageSummary> days) {
     if (days.isEmpty) return null;
     double avg(double Function(UsageSummary) f) =>

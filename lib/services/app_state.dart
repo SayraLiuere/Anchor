@@ -11,6 +11,7 @@ import 'companion_ai.dart';
 import 'features.dart';
 import 'risk_model.dart';
 import 'screen_time.dart';
+import 'usage_snapshots.dart';
 
 /// Mira's pet mood, shown on her face and in her lines.
 enum PetMood { happy, calm, excited, worried, sleepy }
@@ -26,7 +27,8 @@ class AppState extends ChangeNotifier {
 
   /// Version of second_brain.json. Old files have no field and load with
   /// defaults; keys are only ever added, never renamed or removed.
-  static const schemaVersion = 1;
+  /// v2 (A2): adds usage_daily and usage_hourly.
+  static const schemaVersion = 2;
 
   /// True when the bundled Random Forest loaded (used with screen time on).
   bool get forestAvailable => riskEngine.forest != null;
@@ -45,6 +47,10 @@ class AppState extends ChangeNotifier {
   UsageSummary? todayUsage;
   List<UsageSummary> weekUsage = [];
   NudgeSettings nudges = NudgeSettings();
+
+  /// Saved complete days and their hourly breakdown (A2). Never overwritten.
+  List<DaySnapshot> usageDaily = [];
+  List<HourUsage> usageHourly = [];
 
   /// Set when a notification was tapped ("log" or "checkin"); the UI consumes it.
   String? pendingAction;
@@ -81,6 +87,12 @@ class AppState extends ChangeNotifier {
         if (j['dismissedDrafts'] != null) {
           dismissedDrafts = (j['dismissedDrafts'] as List).cast<String>().toSet();
         }
+        usageDaily = (j['usage_daily'] as List? ?? [])
+            .map((e) => DaySnapshot.fromJson(e as Map<String, dynamic>))
+            .toList();
+        usageHourly = (j['usage_hourly'] as List? ?? [])
+            .map((e) => HourUsage.fromJson(e as Map<String, dynamic>))
+            .toList();
       }
     } catch (e) {
       debugPrint('Failed to load data: $e');
@@ -104,7 +116,10 @@ class AppState extends ChangeNotifier {
     if (usageGranted) {
       try {
         todayUsage = await screen.today();
-        weekUsage = await screen.daily(days: 7);
+        await _backfillSnapshots();
+        weekUsage = usageDaily.isEmpty
+            ? await screen.daily(days: 7)
+            : weekFromSnapshots(usageDaily, todayUsage, DateTime.now());
         await _refreshDrafts();
       } catch (e) {
         debugPrint('Usage read failed: $e');
@@ -116,6 +131,38 @@ class AppState extends ChangeNotifier {
     }
     _recompute();
     notifyListeners();
+  }
+
+  bool _backfilling = false;
+
+  /// Saves any of the last 7 complete days that have no row yet (A2). One read
+  /// covers them all, starting 3 h early to catch sessions that cross
+  /// midnight. Days with no usage at all are skipped (likely outside Android's
+  /// event history) and retried next time. Today is saved once it is complete.
+  Future<void> _backfillSnapshots() async {
+    if (_backfilling) return; // a refresh on resume can overlap the one in init
+    _backfilling = true;
+    try {
+      final now = DateTime.now();
+      final missing = missingDays(usageDaily.map((d) => d.date), now);
+      if (missing.isEmpty) return;
+      final read = await screen.sessions(
+          DateTime.parse(missing.first).subtract(const Duration(hours: 3)),
+          dayOf(now));
+      if (read == null) return;
+      final built = buildSnapshots(read.sessions, read.unlocks, missing);
+      final have = usageDaily.map((d) => d.date).toSet();
+      final add = built.days
+          .where((d) => !have.contains(d.date) && (d.totalMinutes > 0 || d.unlocks > 0))
+          .toList();
+      if (add.isEmpty) return;
+      final added = add.map((d) => d.date).toSet();
+      usageDaily = [...usageDaily, ...add]..sort((a, b) => a.date.compareTo(b.date));
+      usageHourly.addAll(built.hours.where((h) => added.contains(h.date)));
+      await _save();
+    } finally {
+      _backfilling = false;
+    }
   }
 
   void _recompute() {
@@ -148,6 +195,8 @@ class AppState extends ChangeNotifier {
       'onboarded': onboarded,
       'nudges': nudges.toJson(),
       'dismissedDrafts': dismissedDrafts.toList(),
+      'usage_daily': usageDaily.map((e) => e.toJson()).toList(),
+      'usage_hourly': usageHourly.map((e) => e.toJson()).toList(),
     }), flush: true);
     await tmp.rename(_file!.path);
   }
