@@ -11,6 +11,8 @@ import 'baseline.dart';
 import 'chat_context.dart';
 import 'companion_ai.dart';
 import 'export.dart';
+import 'focus.dart';
+import '../models/nudge_event.dart';
 import 'memory.dart';
 import '../models/fact.dart';
 import '../models/context_note.dart';
@@ -44,7 +46,8 @@ class AppState extends ChangeNotifier {
   /// v5 (C1): adds blocks; logs get block_id and block_type.
   /// v6 (B4): adds facts.
   /// v7 (C3): adds context_notes.
-  static const schemaVersion = 7;
+  /// v8 (D2): adds nudge_events; logs can have source and nudge_id.
+  static const schemaVersion = 8;
 
   /// True when the bundled Random Forest loaded (used with screen time on).
   bool get forestAvailable => riskEngine.forest != null;
@@ -124,6 +127,9 @@ class AppState extends ChangeNotifier {
             .toList();
         final dismissedAt = j['limit_suggestion_dismissed_at'] as String?;
         limitSuggestionDismissedAt = dismissedAt == null ? null : parseTimestamp(dismissedAt);
+        nudgeEvents = (j['nudge_events'] as List? ?? [])
+            .map((e) => NudgeEvent.fromJson(e as Map<String, dynamic>))
+            .toList();
         notes = (j['context_notes'] as List? ?? [])
             .map((e) => ContextNote.fromJson(e as Map<String, dynamic>))
             .toList();
@@ -183,6 +189,7 @@ class AppState extends ChangeNotifier {
 
   /// Re-reads permissions and screen time. Called on start and app resume.
   Future<void> refreshDevice() async {
+    await _mergePending();
     usageGranted = await screen.hasUsagePermission();
     notificationsGranted = await screen.hasNotificationPermission();
     if (usageGranted) {
@@ -319,6 +326,7 @@ class AppState extends ChangeNotifier {
       'blocks': blocks.map((b) => b.toJson()).toList(),
       'facts': facts.map((f) => f.toJson()).toList(),
       'context_notes': notes.map((n) => n.toJson()).toList(),
+      'nudge_events': nudgeEvents.map((n) => n.toJson()).toList(),
       if (limitSuggestionDismissedAt != null)
         'limit_suggestion_dismissed_at': toOffsetIso(limitSuggestionDismissedAt!),
     }), flush: true);
@@ -741,6 +749,29 @@ class AppState extends ChangeNotifier {
       riskGrid == null ? const [] : upcomingSlotStarts(riskGrid!, now),
       quietRanges(schedule, now),
     ));
+    // D2: class, study and work ranges for the calendar-aware nudge.
+    screen.pushFocusPlan(focusPlanJson(focusRanges(schedule, now)));
+  }
+
+  // ---------- Calendar-aware nudge (D2) ----------
+
+  /// Nudges shown and how they were answered. Stored as `nudge_events`
+  /// (`nudges` already holds the warning settings).
+  List<NudgeEvent> nudgeEvents = [];
+
+  /// Merges what the notification buttons saved while the app was closed:
+  /// nudges, answers, episodes, skipped classes, the 5-minute check.
+  Future<void> _mergePending() async {
+    final queue = await screen.takePending();
+    if (queue.isEmpty) return;
+    final m = applyPending(queue, logs: logs, nudges: nudgeEvents, blocks: blocks);
+    logs = m.logs;
+    nudgeEvents = m.nudges;
+    final scheduleChanged = m.blocks.length != blocks.length ||
+        [for (var i = 0; i < blocks.length; i++) i].any((i) => !identical(m.blocks[i], blocks[i]));
+    blocks = m.blocks;
+    if (scheduleChanged) screen.pushSchedule(blocks);
+    _changed();
   }
 
   void updateNudges(void Function(NudgeSettings n) edit) {
@@ -775,6 +806,7 @@ class AppState extends ChangeNotifier {
         daily: usageDaily,
         hourly: usageHourly,
         logs: logs,
+        nudges: [for (final n in nudgeEvents) n.toJson()],
       ));
 
   /// Writes the export to a temporary file for the share sheet.

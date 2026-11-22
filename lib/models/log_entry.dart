@@ -42,6 +42,8 @@ class LogEntry {
     this.draftId,
     this.blockId,
     this.blockType,
+    this.source,
+    this.nudgeId,
   });
 
   final String id;
@@ -78,6 +80,12 @@ class LogEntry {
   final String? blockId;
   final String? blockType;
 
+  /// `nudge` when saved from a notification button (D2) rather than the log
+  /// sheet; such entries carry default mood, stress and urge, so they are
+  /// left out of those averages.
+  final String? source;
+  final String? nudgeId;
+
   bool get autoDetected => draftId != null;
 
   bool get isLateNight => timestamp.hour >= 23 || timestamp.hour < 5;
@@ -99,6 +107,8 @@ class LogEntry {
         if (appGroup != null) 'app_group': appGroup,
         if (blockId != null) 'block_id': blockId,
         if (blockType != null) 'block_type': blockType,
+        if (source != null) 'source': source,
+        if (nudgeId != null) 'nudge_id': nudgeId,
         if (draftId != null) 'draft_id': draftId,
       };
 
@@ -121,6 +131,8 @@ class LogEntry {
         appGroup: j['app_group'] as String?,
         blockId: j['block_id'] as String?,
         blockType: j['block_type'] as String?,
+        source: j['source'] as String?,
+        nudgeId: j['nudge_id'] as String?,
         draftId: j['draft_id'] as String?,
       );
 }

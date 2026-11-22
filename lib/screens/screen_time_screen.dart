@@ -357,6 +357,14 @@ class _NudgeSettingsCard extends StatelessWidget {
             ),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
+              value: n.classNudge,
+              onChanged: (v) => s.updateNudges((n) => n.classNudge = v),
+              title: const Text('Silent nudge during class, study or work'),
+              subtitle: const Text('Vibrates after 10+ min of social, video or games inside a scheduled '
+                  'block. Answer from the lock screen. Never for messaging or music.'),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
               value: n.askAfterSession,
               onChanged: (v) => s.updateNudges((n) => n.askAfterSession = v),
               title: const Text('Ask me after a long session'),

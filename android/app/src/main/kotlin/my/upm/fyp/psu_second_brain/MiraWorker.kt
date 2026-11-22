@@ -37,8 +37,10 @@ class MiraConfig(json: JSONObject) {
     val draftMinutes = json.optInt("draftMinutes", 15)
     /** Heads-up before a usually heavy hour (D1). */
     val headsUp = json.optBoolean("headsUp", true)
+    /** Silent nudge when scrolling during class, study or work (D2). */
+    val classNudge = json.optBoolean("classNudge", true)
 
-    val anyEnabled get() = warnings || logReminder || headsUp
+    val anyEnabled get() = warnings || logReminder || headsUp || classNudge
 
     companion object {
         private const val PREFS = "mira_native"
@@ -162,6 +164,7 @@ class MiraWorker(ctx: Context, params: WorkerParameters) : Worker(ctx, params) {
         }
 
         headsUp(cfg, prefs, now)
+        if (cfg.classNudge && UsageReader.hasPermission(ctx)) FocusNudge.check(ctx, now)
 
         if (cfg.logReminder) {
             val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)

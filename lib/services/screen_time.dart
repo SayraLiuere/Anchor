@@ -118,6 +118,7 @@ class NudgeSettings {
     this.askAfterSession = true,
     this.draftMinutes = 15,
     this.headsUp = true,
+    this.classNudge = true,
   }) : limits = limits ?? {'social': 60, 'games': 60, 'video': 90, 'total': 300};
 
   bool warningsEnabled;
@@ -135,6 +136,9 @@ class NudgeSettings {
   /// Heads-up 10-25 min before a usually heavy hour (D1).
   bool headsUp;
 
+  /// Silent nudge when scrolling during class, study or work (D2).
+  bool classNudge;
+
   Map<String, dynamic> toJson() => {
         'warningsEnabled': warningsEnabled,
         'limits': limits,
@@ -144,6 +148,7 @@ class NudgeSettings {
         'askAfterSession': askAfterSession,
         'draftMinutes': draftMinutes,
         'headsUp': headsUp,
+        'classNudge': classNudge,
       };
 
   factory NudgeSettings.fromJson(Map<String, dynamic> j) => NudgeSettings(
@@ -156,6 +161,7 @@ class NudgeSettings {
         askAfterSession: j['askAfterSession'] as bool? ?? true,
         draftMinutes: j['draftMinutes'] as int? ?? 15,
         headsUp: j['headsUp'] as bool? ?? true,
+        classNudge: j['classNudge'] as bool? ?? true,
       );
 }
 
@@ -266,6 +272,17 @@ class ScreenTimeService {
   /// null lifts the pause.
   Future<void> pauseLimitWarningsUntil(DateTime? until) =>
       _call('pauseLimitWarnings', {'until': until?.millisecondsSinceEpoch ?? 0});
+
+  /// Class, study and work ranges for the worker (D2).
+  Future<void> pushFocusPlan(Map<String, dynamic> plan) =>
+      _call('setFocusPlan', {'json': jsonEncode(plan)});
+
+  /// Answers given from notifications while the app was closed (D2).
+  Future<List<Map<String, dynamic>>> takePending() async {
+    final s = await _call<String>('takePending');
+    if (s == null || s.isEmpty) return const [];
+    return [for (final e in jsonDecode(s) as List) Map<String, dynamic>.from(e as Map)];
+  }
 
   /// Upcoming risky slot starts and quiet ranges for the worker (D1).
   Future<void> pushHeadsUpPlan(Map<String, dynamic> plan) =>

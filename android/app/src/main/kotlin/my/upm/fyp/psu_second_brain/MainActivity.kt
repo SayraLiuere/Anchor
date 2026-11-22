@@ -85,6 +85,13 @@ class MainActivity : FlutterActivity() {
                         .putString("schedule", call.argument<String>("json") ?: "[]").apply()
                     result.success(null)
                 }
+                "setFocusPlan" -> {
+                    // D2: class, study and work ranges for the next week, epoch ms.
+                    MiraConfig.prefs(this).edit()
+                        .putString("focusPlan", call.argument<String>("json") ?: "{}").apply()
+                    result.success(null)
+                }
+                "takePending" -> result.success(PendingQueue.take(this))
                 "setHeadsUpPlan" -> {
                     // D1: flagged slot starts and quiet ranges, epoch ms.
                     MiraConfig.prefs(this).edit()

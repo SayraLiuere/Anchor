@@ -167,6 +167,7 @@ class BehaviourFeatures {
         .subtract(Duration(days: windowDays - 1));
     final recent = logs.where((l) => !l.timestamp.isBefore(startDay)).toList();
     final episodes = recent.where((l) => l.kind == EntryKind.episode).toList();
+    final rated = recent.where((l) => l.source != 'nudge');
 
     double mean(Iterable<num> xs) =>
         xs.isEmpty ? 0 : xs.reduce((a, b) => a + b) / xs.length;
@@ -192,9 +193,10 @@ class BehaviourFeatures {
       episodeCount: episodes.length,
       episodesPerDay: episodes.length / windowDays,
       lateNightRatio: ratio(episodes.where((e) => e.isLateNight).length),
-      meanCraving: mean(recent.map((e) => e.craving)),
-      meanStress: mean(recent.map((e) => e.stress)),
-      meanMood: mean(recent.map((e) => e.mood)),
+      // Self-reported only: entries saved from a notification (D2) have defaults.
+      meanCraving: mean(rated.map((e) => e.craving)),
+      meanStress: mean(rated.map((e) => e.stress)),
+      meanMood: mean(rated.map((e) => e.mood)),
       urgeShare:
           ratio(episodes.where((e) => e.triggers.contains(Trigger.urge)).length),
       resistRate: ratio(episodes.where((e) => e.resisted).length),
